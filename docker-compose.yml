@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  # ─────────────────────────────────────────────
+  # PostgreSQL — persistent memory
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: supersocial_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: supersocial
+      POSTGRES_USER: supersocial
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supersocial"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Redis — rate limiting + task queue
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: supersocial_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Migrate — run DB migrations on startup
+  # ─────────────────────────────────────────────
+  migrate:
+    build: .
+    container_name: supersocial_migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://supersocial:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supersocial
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # George — main agent (weekly cycle)
+  # ─────────────────────────────────────────────
+  george:
+    build: .
+    container_name: supersocial_george
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://supersocial:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supersocial
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - george_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: ["python", "-m", "scheduler.weekly_cycle"]
+
+  # ─────────────────────────────────────────────
+  # Scheduler — cron container
+  # ─────────────────────────────────────────────
+  scheduler:
+    image: alpine:3.19
+    container_name: supersocial_scheduler
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./crontab:/etc/crontabs/root:ro
+    depends_on:
+      - george
+    command: ["crond", "-f", "-l", "2"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  george_data:

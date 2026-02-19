@@ -1,0 +1,32 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data / exports
+/data/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Coverage
+.coverage
+htmlcov/
+
+# Alembic (keep versions in source control)
+alembic/versions/*.pyc
