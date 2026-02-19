@@ -1,5 +1,9 @@
 # Core
 python-dotenv==1.0.0
+
+# Tool Server (API REST para OpenClaw)
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
 pydantic==2.6.0
 pydantic-settings==2.2.0
 

@@ -77,6 +77,41 @@ services:
     command: ["python", "-m", "scheduler.weekly_cycle"]
 
   # ─────────────────────────────────────────────
+  # Tool Server — API REST para OpenClaw y agentes
+  # Tu bot de OpenClaw se conecta aquí
+  # ─────────────────────────────────────────────
+  tool-server:
+    build: .
+    container_name: supersocial_tool_server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://supersocial:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supersocial
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - george_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: [
+      "uvicorn", "tools_server.main:app",
+      "--host", "0.0.0.0",
+      "--port", "8000",
+      "--workers", "2"
+    ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────
   # Scheduler — cron container
   # ─────────────────────────────────────────────
   scheduler:
