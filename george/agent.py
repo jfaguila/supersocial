@@ -39,8 +39,7 @@ from content.platform_formatter import PlatformFormatter
 from content.deduplication import DeduplicationGuard
 
 from video.script_formatter import ScriptFormatter
-from video.srt_generator import SRTGenerator
-from video.render_exporter import RenderExporter
+from video.render_exporter import VideoPipeline
 
 from feedback.metrics_puller import MetricsPuller
 from feedback.cycle_comparator import CycleComparator
@@ -85,7 +84,7 @@ class GeorgeAgent:
         self._prompt_builder = PromptBuilder()
         self._formatter = PlatformFormatter()
         self._script_formatter = ScriptFormatter()
-        self._render_exporter = RenderExporter()
+        self._video_pipeline = VideoPipeline(self._settings)
 
     async def run_weekly_cycle(self, strategic_prompt: Optional[str] = None) -> dict:
         """Full 7-day content cycle. Returns cycle summary."""
@@ -323,10 +322,8 @@ class GeorgeAgent:
             for vp in video_posts:
                 try:
                     # Re-fetch content text from DB
-                    post_record = await repo.session.get(
-                        __import__("memory.models", fromlist=["PostHistory"]).PostHistory,
-                        vp["post_id"]
-                    )
+                    from memory.models import PostHistory
+                    post_record = await repo.session.get(PostHistory, vp["post_id"])
                     if not post_record:
                         continue
 
@@ -335,19 +332,35 @@ class GeorgeAgent:
                         platform=vp["platform"],
                         title=f"{vp['platform'].capitalize()} Video",
                     )
-                    bundle_paths = self._render_exporter.export_bundle(
+
+                    result = await self._video_pipeline.run(
                         script=script,
                         output_dir=f"/data/video_exports/{cycle.id}",
+                        niches=niches,
+                        business_context=strategic_prompt or "",
                     )
-                    state.video_bundles.append({
-                        "post_id": vp["post_id"],
-                        "platform": vp["platform"],
-                        "paths": bundle_paths,
-                    })
-                    await logger.info("video", "video_bundle_exported", {
-                        "post_id": vp["post_id"],
-                        "files": list(bundle_paths.keys()),
-                    })
+
+                    if result.success:
+                        state.video_bundles.append({
+                            "post_id": vp["post_id"],
+                            "platform": vp["platform"],
+                            "final_video": result.final_video_path,
+                            "srt": result.srt_path,
+                            "scenes": result.scenes_count,
+                            "duration": result.duration_seconds,
+                        })
+                        await logger.info("video", "video_generated", {
+                            "post_id": vp["post_id"],
+                            "platform": vp["platform"],
+                            "path": result.final_video_path,
+                            "scenes": result.scenes_count,
+                        })
+                    else:
+                        await logger.warn("video", "video_generation_failed", {
+                            "post_id": vp["post_id"],
+                            "error": result.error,
+                        })
+
                 except Exception as e:
                     state.record_error("video_pipeline", str(e))
                     await logger.error("video", "video_export_failed", {"error": str(e)})

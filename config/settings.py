@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     openai_model: str = Field("gpt-4o", alias="OPENAI_MODEL")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
 
+    # --- Video: Runway Gen-3 ---
+    runwayml_api_key: str = Field("", alias="RUNWAYML_API_KEY")
+
+    # --- Video: ElevenLabs ---
+    elevenlabs_api_key: str = Field("", alias="ELEVENLABS_API_KEY")
+    # Voice ID to use for narration. Leave empty to use the default (Adam).
+    # Find your voice IDs at: https://elevenlabs.io/voice-library
+    elevenlabs_voice_id: str = Field("", alias="ELEVENLABS_VOICE_ID")
+
     # --- X (Twitter) ---
     twitter_bearer_token: str = Field("", alias="TWITTER_BEARER_TOKEN")
     twitter_api_key: str = Field("", alias="TWITTER_API_KEY")
