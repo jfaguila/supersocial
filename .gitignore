@@ -30,3 +30,5 @@ htmlcov/
 
 # Alembic (keep versions in source control)
 alembic/versions/*.pyc
+nomina-app/node_modules/
+nomina-app/build/
