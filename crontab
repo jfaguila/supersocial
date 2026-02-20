@@ -1,22 +1,26 @@
 # SuperSocial — Cron Schedule (UTC)
 # ──────────────────────────────────────────
+# El scheduler usa wget (built-in Alpine) para llamar
+# al tool-server por su nombre de servicio Docker.
+
+API=http://tool-server:8000
 
 # ── George (legacy engine) ────────────────
 
 # Weekly full cycle: every Sunday at 00:00 UTC
-0 0 * * 0 docker exec supersocial_george python -m scheduler.weekly_cycle >> /var/log/george_weekly.log 2>&1
+0 0 * * 0 wget -qO- --post-data='' http://supersocial_george:8000/george/cycle >> /var/log/george_weekly.log 2>&1
 
 # Daily micro cycle: every day at 06:00 UTC
-0 6 * * * docker exec supersocial_george python -m scheduler.daily_cycle >> /var/log/george_daily.log 2>&1
+0 6 * * * wget -qO- --post-data='' http://supersocial_george:8000/george/daily >> /var/log/george_daily.log 2>&1
 
 # ── Pipeline (5-layer architecture) ──────
 
 # Workflow 1: Captura de señales — cada día a las 08:00 UTC
-0 8 * * * docker exec supersocial_tool_server curl -sf -X POST http://localhost:8000/pipeline/capture >> /var/log/pipeline_capture.log 2>&1
+0 8 * * * wget -qO- --post-data='' http://tool-server:8000/pipeline/capture >> /var/log/pipeline_capture.log 2>&1
 
-# Workflow 2: Análisis IA + generación — cada día a las 08:30 UTC (después de captura)
-30 8 * * * docker exec supersocial_tool_server curl -sf -X POST http://localhost:8000/pipeline/generate >> /var/log/pipeline_generate.log 2>&1
+# Workflow 2: Análisis IA + generación — cada día a las 08:30 UTC
+30 8 * * * wget -qO- --post-data='' http://tool-server:8000/pipeline/generate >> /var/log/pipeline_generate.log 2>&1
 
-# Workflow 3: Publicar aprobados — cada día a las 10:00 y 16:00 UTC (2 pasadas)
-0 10 * * * docker exec supersocial_tool_server curl -sf -X POST http://localhost:8000/pipeline/publish >> /var/log/pipeline_publish.log 2>&1
-0 16 * * * docker exec supersocial_tool_server curl -sf -X POST http://localhost:8000/pipeline/publish >> /var/log/pipeline_publish.log 2>&1
+# Workflow 3: Publicar aprobados — cada día a las 10:00 y 16:00 UTC
+0 10 * * * wget -qO- --post-data='' http://tool-server:8000/pipeline/publish >> /var/log/pipeline_publish.log 2>&1
+0 16 * * * wget -qO- --post-data='' http://tool-server:8000/pipeline/publish >> /var/log/pipeline_publish.log 2>&1

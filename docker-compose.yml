@@ -114,16 +114,17 @@ services:
 
   # ─────────────────────────────────────────────
   # Scheduler — cron container
+  # Usa wget (Alpine built-in) para llamar a
+  # tool-server via red interna de Docker.
   # ─────────────────────────────────────────────
   scheduler:
     image: alpine:3.19
     container_name: supersocial_scheduler
     restart: unless-stopped
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./crontab:/etc/crontabs/root:ro
     depends_on:
-      - george
+      - tool-server
     command: ["crond", "-f", "-l", "2"]
 
 volumes:
