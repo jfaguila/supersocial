@@ -1,5 +1,14 @@
 """
 SQLAlchemy ORM models matching the database schema.
+
+Tables:
+  Original (George engine):
+    - agent_cycles, agent_logs, posts_history, performance_metrics,
+      hook_patterns, emotional_triggers, growth_metrics, strategy_weights
+
+  Pipeline (5-layer architecture):
+    - trend_signals   — Capa 1: raw signals captured from external sources
+    - content_drafts  — Capa 3-4: generated content awaiting review
 """
 import uuid
 from datetime import datetime
@@ -167,3 +176,73 @@ class AgentLog(Base):
     duration_ms = Column(Integer)
 
     cycle = relationship("AgentCycle", back_populates="logs")
+
+
+# ================================================================== #
+# PIPELINE — 5-Layer Architecture
+# ================================================================== #
+
+
+class TrendSignal(Base):
+    """Capa 1: Raw signal captured from an external source.
+
+    Sources: google_trends, rss, youtube, twitter, tiktok, n8n_webhook.
+    Each row = one detected trend or keyword opportunity.
+    """
+    __tablename__ = "trend_signals"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    source = Column(String(50), nullable=False, index=True)      # google_trends|rss|youtube|twitter|n8n_webhook
+    keyword = Column(String(255), nullable=False, index=True)
+    volume = Column(BigInteger, default=0)                        # search volume / view count
+    trending_score = Column(Float, default=0.0)                   # 0-100 raw popularity score
+    region = Column(String(10), default="global")                 # country code or "global"
+    category = Column(String(100))                                # tech, business, ai, etc.
+    raw_data = Column(JSONB)                                      # original payload from source
+    captured_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp()))
+
+    # Capa 2: AI analysis fields (filled after scoring)
+    ai_score = Column(Float)                                      # 0-100 opportunity score from LLM
+    ideal_client = Column(String(255))                            # B2B, solopreneurs, etc.
+    recommended_format = Column(String(50))                       # video|carousel|thread|post
+    viral_angle = Column(Text)                                    # suggested hook / angle
+    analyzed_at = Column(BigInteger)
+    status = Column(String(20), default="raw", index=True)       # raw|analyzed|used|discarded
+
+    drafts = relationship("ContentDraft", back_populates="signal", lazy="dynamic")
+
+
+class ContentDraft(Base):
+    """Capa 3-4: Generated content piece awaiting human review.
+
+    Lifecycle: generated -> pending_review -> approved -> scheduled -> published
+               generated -> pending_review -> rejected
+    """
+    __tablename__ = "content_drafts"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    signal_id = Column(UUID(as_uuid=False), ForeignKey("trend_signals.id"), index=True)
+    platform = Column(String(20), nullable=False, index=True)    # instagram|tiktok|linkedin|twitter|youtube
+    content_type = Column(String(30), nullable=False)             # post|script|thread|carousel|idea
+    content_text = Column(Text, nullable=False)
+    hook_text = Column(Text)
+    hashtags = Column(Text)                                       # comma-separated
+    emotional_tone = Column(String(50))
+    narrative_type = Column(String(50))
+    char_count = Column(Integer, default=0)
+
+    # Review workflow (Capa 4)
+    status = Column(String(20), default="generated", index=True)  # generated|pending_review|approved|rejected|scheduled|published|failed
+    reviewer_note = Column(Text)
+    reviewed_at = Column(BigInteger)
+
+    # Publishing (Capa 5)
+    metricool_id = Column(String(255))                            # ID in Metricool after scheduling
+    external_id = Column(String(255))                             # post ID on the platform
+    scheduled_at = Column(BigInteger)
+    published_at = Column(BigInteger)
+
+    created_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp()))
+    updated_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp()))
+
+    signal = relationship("TrendSignal", back_populates="drafts")

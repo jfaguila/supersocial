@@ -1,5 +1,5 @@
 # SuperSocial — Autonomous Multi-Platform Content Engine
-## Technical Architecture Document v1.0
+## Technical Architecture Document v2.0
 
 ---
 
@@ -412,3 +412,150 @@ Services:
 - Discovers new hook patterns from scratch
 - Adjusts posting frequency per platform independently
 - Generates platform-specific persona variations
+
+---
+
+## 8. PIPELINE — ARQUITECTURA DE 5 CAPAS
+
+La arquitectura de 5 capas complementa a George con un pipeline estructurado
+que separa responsabilidades y permite integración con orquestadores externos (n8n).
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                    PIPELINE — 5 CAPAS                                     │
+│                                                                           │
+│   CAPA 1              CAPA 2            CAPA 3                            │
+│   Captura             Análisis IA       Generación                        │
+│   ┌──────────┐       ┌──────────┐      ┌──────────────┐                  │
+│   │ Google   │──┐    │  LLM     │      │  Instagram   │                  │
+│   │ Trends   │  │    │  Scorer  │      │  TikTok      │                  │
+│   ├──────────┤  │    │          │      │  LinkedIn    │                  │
+│   │ RSS      │  ├──► │ ai_score │──►   │  Twitter/X   │                  │
+│   │ Feeds    │  │    │ cliente  │      │  YouTube     │                  │
+│   ├──────────┤  │    │ formato  │      └──────┬───────┘                  │
+│   │ YouTube  │  │    │ ángulo   │             │                           │
+│   │ API      │──┘    └──────────┘             │                           │
+│   ├──────────┤                                ▼                           │
+│   │ n8n      │                        ┌──────────────┐                    │
+│   │ Webhook  │                        │ content_     │                    │
+│   └──────────┘                        │ drafts DB    │                    │
+│       │                               └──────┬───────┘                    │
+│       ▼                                      │                           │
+│   ┌──────────┐          CAPA 4               ▼           CAPA 5          │
+│   │ trend_   │       ┌──────────────┐   ┌──────────────┐                 │
+│   │ signals  │       │ Panel de     │   │  Metricool   │                 │
+│   │ DB       │       │ Revisión     │──►│  API         │                 │
+│   └──────────┘       │ Humana       │   │              │                 │
+│                      │ Aprobar /    │   │ Programar /  │                 │
+│                      │ Rechazar     │   │ Publicar     │                 │
+│                      └──────────────┘   └──────────────┘                 │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3 Workflows (no 20 flujos)
+
+| Workflow | Trigger | Qué hace |
+|----------|---------|----------|
+| **1. capture_signals** | n8n cron diario / POST /pipeline/capture | Fetcha Google Trends, RSS, YouTube. Guarda en `trend_signals`. |
+| **2. generate_content** | n8n post-captura / POST /pipeline/generate | Puntúa señales con IA (Capa 2). Genera contenido multi-plataforma (Capa 3). |
+| **3. publish_approved** | n8n post-revisión / POST /pipeline/publish | Envía borradores aprobados a Metricool para scheduling. |
+
+### Pipeline DB Tables
+
+```sql
+-- trend_signals: señales externas capturadas (Capa 1)
+CREATE TABLE trend_signals (
+    id                  UUID PRIMARY KEY,
+    source              VARCHAR(50) NOT NULL,     -- google_trends|rss|youtube|n8n_webhook
+    keyword             VARCHAR(255) NOT NULL,
+    volume              BIGINT DEFAULT 0,
+    trending_score      FLOAT DEFAULT 0.0,        -- 0-100 raw popularity
+    region              VARCHAR(10) DEFAULT 'global',
+    category            VARCHAR(100),
+    raw_data            JSONB,
+    captured_at         BIGINT,
+    -- AI analysis (Capa 2)
+    ai_score            FLOAT,                    -- 0-100 opportunity score
+    ideal_client        VARCHAR(255),
+    recommended_format  VARCHAR(50),              -- video|carousel|thread|post
+    viral_angle         TEXT,
+    analyzed_at         BIGINT,
+    status              VARCHAR(20) DEFAULT 'raw' -- raw|analyzed|used|discarded
+);
+
+-- content_drafts: contenido generado pendiente de revisión (Capa 3-4)
+CREATE TABLE content_drafts (
+    id              UUID PRIMARY KEY,
+    signal_id       UUID REFERENCES trend_signals(id),
+    platform        VARCHAR(20) NOT NULL,         -- instagram|tiktok|linkedin|twitter|youtube
+    content_type    VARCHAR(30) NOT NULL,          -- post|script|thread|carousel|idea
+    content_text    TEXT NOT NULL,
+    hook_text       TEXT,
+    hashtags        TEXT,
+    emotional_tone  VARCHAR(50),
+    narrative_type  VARCHAR(50),
+    char_count      INTEGER DEFAULT 0,
+    -- Review (Capa 4)
+    status          VARCHAR(20) DEFAULT 'generated',  -- generated|pending_review|approved|rejected|scheduled|published|failed
+    reviewer_note   TEXT,
+    reviewed_at     BIGINT,
+    -- Publishing (Capa 5)
+    metricool_id    VARCHAR(255),
+    external_id     VARCHAR(255),
+    scheduled_at    BIGINT,
+    published_at    BIGINT,
+    created_at      BIGINT,
+    updated_at      BIGINT
+);
+```
+
+### Pipeline API Endpoints
+
+| Method | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/pipeline/signals` | Webhook n8n: recibir señales externas |
+| POST | `/pipeline/capture` | Captura automática de todas las fuentes |
+| POST | `/pipeline/generate` | Analizar + generar contenido |
+| GET  | `/pipeline/drafts` | Borradores pendientes de revisión |
+| POST | `/pipeline/drafts/{id}/review` | Aprobar / rechazar borrador |
+| POST | `/pipeline/publish` | Publicar aprobados vía Metricool |
+| GET  | `/pipeline/trends` | Tendencias analizadas con score IA |
+
+### Integración con n8n
+
+```
+n8n Workflow 1 (Cron: cada día 08:00):
+  [Google Trends] ──► [HTTP POST /pipeline/signals]
+  [RSS Reader]    ──► [HTTP POST /pipeline/signals]
+  [YouTube API]   ──► [HTTP POST /pipeline/signals]
+  ──► [HTTP POST /pipeline/generate]
+
+n8n Workflow 2 (Trigger: humano aprueba):
+  [Webhook] ──► [HTTP POST /pipeline/publish]
+```
+
+### Nuevo directorio de ficheros
+
+```
+supersocial/
+├── signals/                          # Capa 1 — Signal capture
+│   ├── __init__.py
+│   ├── google_trends.py              # Google Trends API client
+│   ├── rss_reader.py                 # RSS/Atom feed reader
+│   ├── youtube_trends.py             # YouTube Data API client
+│   └── aggregator.py                 # Combines all sources + dedup
+│
+├── pipeline/                         # Orchestration — 3 workflows
+│   ├── __init__.py
+│   ├── trend_scorer.py               # Capa 2 — AI analysis + scoring
+│   ├── content_generator.py          # Capa 3 — Multi-platform generation
+│   └── orchestrator.py               # 3 unified workflows
+│
+├── integrations/                     # External service clients
+│   ├── __init__.py
+│   └── metricool.py                  # Capa 5 — Metricool scheduler API
+│
+├── alembic/versions/
+│   ├── 001_initial_schema.py
+│   └── 002_pipeline_tables.py        # trend_signals + content_drafts
+```

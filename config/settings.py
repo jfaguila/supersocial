@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     content_languages: str = Field("en", alias="CONTENT_LANGUAGES")
     max_posts_per_platform_per_day: int = Field(3, alias="MAX_POSTS_PER_PLATFORM_PER_DAY")
 
+    # --- Metricool (Capa 5 — scheduler/publisher) ---
+    metricool_api_token: str = Field("", alias="METRICOOL_API_TOKEN")
+    metricool_user_token: str = Field("", alias="METRICOOL_USER_TOKEN")
+
+    # --- YouTube Data API (Capa 1 — signal capture) ---
+    youtube_api_key: str = Field("", alias="YOUTUBE_API_KEY")
+
+    # --- Signal capture ---
+    signal_geo: str = Field("US", alias="SIGNAL_GEO")
+
     # --- Alerts ---
     alert_email: str = Field("", alias="ALERT_EMAIL")
     smtp_host: str = Field("", alias="SMTP_HOST")

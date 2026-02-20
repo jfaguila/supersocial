@@ -27,6 +27,12 @@ from tools_server.schemas import (
     CycleSummaryResponse,
     ChatRequest,
     ChatResponse,
+    SignalWebhookRequest,
+    PipelineWorkflowResponse,
+    GenerateContentRequest,
+    ReviewDraftRequest,
+    DraftListResponse,
+    TrendListResponse,
 )
 from tools_server.api_checker import ApiChecker
 from tools_server.cycle_runner import BackgroundCycleRunner
@@ -408,6 +414,214 @@ async def health():
     return {"status": "ok", "agent": "george", "timestamp": int(time.time())}
 
 
+# ═════════════════════════════════════════════════════════════
+# PIPELINE — Arquitectura de 5 capas
+# n8n y cualquier orquestador externo conectan aquí.
+# ═════════════════════════════════════════════════════════════
+
+# ─── CAPA 1: Captura de señales ─────────────────────────────
+
+@app.post(
+    "/pipeline/signals",
+    response_model=PipelineWorkflowResponse,
+    summary="Recibir señales desde n8n u otro webhook externo",
+    tags=["Pipeline"],
+)
+async def receive_signals(request: SignalWebhookRequest):
+    """
+    **Webhook para n8n.**
+
+    n8n envía señales capturadas (Google Trends, RSS, YouTube, etc.)
+    y SuperSocial las guarda en la base de datos para análisis.
+
+    Ejemplo de payload desde n8n:
+    ```json
+    {
+      "signals": [
+        {"keyword": "AI agents 2026", "source": "google_trends", "volume": 150000},
+        {"keyword": "OpenAI launches new model", "source": "rss", "category": "ai"}
+      ]
+    }
+    ```
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        payload = [item.model_dump() for item in request.signals]
+        result = await orch.capture_from_webhook(session, payload)
+        await session.commit()
+
+    return PipelineWorkflowResponse(**result.to_dict())
+
+
+@app.post(
+    "/pipeline/capture",
+    response_model=PipelineWorkflowResponse,
+    summary="Ejecutar captura automática de señales de todas las fuentes",
+    tags=["Pipeline"],
+)
+async def capture_signals():
+    """
+    Ejecuta la captura de señales desde todas las fuentes configuradas:
+    Google Trends, RSS feeds, YouTube.
+
+    Equivalente a lo que n8n ejecutaría diariamente como cron.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        result = await orch.capture_signals(session)
+        await session.commit()
+
+    return PipelineWorkflowResponse(**result.to_dict())
+
+
+# ─── CAPA 2+3: Análisis IA + Generación de contenido ───────
+
+@app.post(
+    "/pipeline/generate",
+    response_model=PipelineWorkflowResponse,
+    summary="Analizar tendencias con IA y generar contenido multi-plataforma",
+    tags=["Pipeline"],
+)
+async def generate_content(request: GenerateContentRequest = GenerateContentRequest()):
+    """
+    **Workflow 2: Análisis + Generación.**
+
+    1. Puntúa las señales crudas con IA (oportunidad, cliente ideal, ángulo viral)
+    2. Selecciona las mejores oportunidades (min_score)
+    3. Genera contenido para cada plataforma
+
+    Todo el contenido generado queda en estado `pending_review`.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        result = await orch.generate_content(
+            session,
+            min_score=request.min_score,
+            max_signals=request.max_signals,
+            platforms=request.platforms,
+        )
+        await session.commit()
+
+    return PipelineWorkflowResponse(**result.to_dict())
+
+
+# ─── CAPA 4: Revisión humana ───────────────────────────────
+
+@app.get(
+    "/pipeline/drafts",
+    response_model=DraftListResponse,
+    summary="Borradores pendientes de revisión",
+    tags=["Pipeline"],
+)
+async def get_drafts(platform: Optional[str] = None, limit: int = 50):
+    """
+    Devuelve todos los borradores de contenido pendientes de aprobación.
+    Aquí es donde el humano revisa, ajusta y decide.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        drafts = await orch.get_drafts_for_review(session, platform=platform, limit=limit)
+
+    return DraftListResponse(drafts=drafts, total=len(drafts))
+
+
+@app.post(
+    "/pipeline/drafts/{draft_id}/review",
+    summary="Aprobar o rechazar un borrador de contenido",
+    tags=["Pipeline"],
+)
+async def review_draft(draft_id: str, request: ReviewDraftRequest):
+    """
+    **Revisión manual (Capa 4).**
+
+    - `approved=true` → El borrador pasa a estado 'approved', listo para publicar.
+    - `approved=false` → Se marca como rechazado, no se publica.
+
+    Opcionalmente incluye `scheduled_at` (unix timestamp) para programar la publicación.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        result = await orch.review_draft(
+            session,
+            draft_id=draft_id,
+            approved=request.approved,
+            note=request.note,
+            scheduled_at=request.scheduled_at,
+        )
+        await session.commit()
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+# ─── CAPA 5: Publicación vía Metricool ─────────────────────
+
+@app.post(
+    "/pipeline/publish",
+    response_model=PipelineWorkflowResponse,
+    summary="Publicar borradores aprobados vía Metricool",
+    tags=["Pipeline"],
+)
+async def publish_approved():
+    """
+    **Workflow 3: Publicación.**
+
+    Envía todos los borradores con estado 'approved' a Metricool
+    para programación y publicación automática.
+
+    Si Metricool no está configurado, los borradores se marcan como
+    'scheduled' para publicación manual.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        result = await orch.publish_approved(session)
+        await session.commit()
+
+    return PipelineWorkflowResponse(**result.to_dict())
+
+
+# ─── Vista de tendencias ────────────────────────────────────
+
+@app.get(
+    "/pipeline/trends",
+    response_model=TrendListResponse,
+    summary="Tendencias analizadas con score IA",
+    tags=["Pipeline"],
+)
+async def get_trends(limit: int = 20):
+    """
+    Devuelve las tendencias ya analizadas por la IA,
+    ordenadas por score de oportunidad.
+    """
+    from memory.session import _SessionFactory
+    from pipeline.orchestrator import PipelineOrchestrator
+
+    async with _SessionFactory() as session:
+        orch = PipelineOrchestrator()
+        trends = await orch.get_trends_summary(session, limit=limit)
+
+    return TrendListResponse(trends=trends, total=len(trends))
+
+
 # ─────────────────────────────────────────────────────────────
 # SCHEMA de herramientas para OpenClaw (autodescubrimiento)
 # ─────────────────────────────────────────────────────────────
@@ -509,6 +723,95 @@ async def get_tools_schema():
                         "note": {"type": "string", "description": "Nota opcional de por qué se aprueba/rechaza"},
                     },
                     "required": ["post_id", "approved"],
+                },
+            },
+            # ─── Pipeline tools ───────────────────
+            {
+                "name": "pipeline_receive_signals",
+                "description": "Recibir señales de tendencias desde n8n u otro webhook. Capa 1 del pipeline.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "signals": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "keyword": {"type": "string"},
+                                    "source": {"type": "string", "enum": ["google_trends", "rss", "youtube", "twitter", "n8n_webhook"]},
+                                    "volume": {"type": "integer"},
+                                    "trending_score": {"type": "number"},
+                                    "category": {"type": "string"},
+                                },
+                                "required": ["keyword"],
+                            },
+                        },
+                    },
+                    "required": ["signals"],
+                },
+            },
+            {
+                "name": "pipeline_capture_signals",
+                "description": "Ejecutar captura automática de señales desde Google Trends, RSS y YouTube.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "pipeline_generate_content",
+                "description": "Analizar tendencias con IA y generar contenido multi-plataforma. Combina Capa 2 (análisis) y Capa 3 (generación).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "min_score": {"type": "number", "description": "Score mínimo de oportunidad (0-100)", "default": 60},
+                        "max_signals": {"type": "integer", "description": "Máximo de señales a procesar", "default": 5},
+                        "platforms": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": ["instagram", "tiktok", "linkedin", "twitter", "youtube"]},
+                            "description": "Plataformas destino",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "pipeline_get_drafts",
+                "description": "Lista borradores de contenido pendientes de revisión humana (Capa 4).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "platform": {"type": "string", "enum": ["instagram", "tiktok", "linkedin", "twitter", "youtube"]},
+                        "limit": {"type": "integer", "default": 50},
+                    },
+                    "required": [],
+                },
+            },
+            {
+                "name": "pipeline_review_draft",
+                "description": "Aprobar o rechazar un borrador de contenido (Capa 4).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "draft_id": {"type": "string"},
+                        "approved": {"type": "boolean"},
+                        "note": {"type": "string"},
+                        "scheduled_at": {"type": "integer", "description": "Unix timestamp para programar"},
+                    },
+                    "required": ["draft_id", "approved"],
+                },
+            },
+            {
+                "name": "pipeline_publish_approved",
+                "description": "Publicar borradores aprobados vía Metricool o publicación manual (Capa 5).",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+            {
+                "name": "pipeline_get_trends",
+                "description": "Ver tendencias analizadas con score de oportunidad IA.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "default": 20},
+                    },
+                    "required": [],
                 },
             },
         ]
