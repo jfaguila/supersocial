@@ -376,7 +376,7 @@ async def chat_endpoint(request: ChatRequest):
     las guarda directamente. Ideal para configurar SuperSocial sin tocar ficheros.
 
     - `messages`: historial de la conversación [{role, content}]
-    - `chat_key`: clave Anthropic temporal (si no está en el .env aún)
+    - `chat_key`: clave Gemini temporal (si no está en el .env aún)
     """
     from tools_server.chat_handler import chat_with_assistant, resolve_api_key
 
@@ -385,9 +385,9 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(
             status_code=422,
             detail=(
-                "No hay clave Anthropic disponible. "
-                "Pega tu clave de https://console.anthropic.com en el campo 'Clave del chat' "
-                "o añade ANTHROPIC_API_KEY al fichero .env y reinicia."
+                "No hay clave Gemini disponible. "
+                "Pega tu clave de https://aistudio.google.com/apikey en el campo 'Clave del chat' "
+                "o añade GEMINI_API_KEY al fichero .env y reinicia."
             ),
         )
 

@@ -3,7 +3,10 @@ Asistente IA de configuración — lee y escribe el .env conversacionalmente.
 
 El usuario puede decirle las API keys en lenguaje natural y el asistente
 las guarda directamente en el fichero .env sin pasos manuales.
+
+Usa Gemini (Google AI) vía la API compatible con OpenAI — capa gratuita.
 """
+import json
 import os
 import re
 from pathlib import Path
@@ -69,40 +72,49 @@ Cuando el usuario termine, dile que ejecute en su terminal:
 para que los cambios tengan efecto.
 """
 
-# ── Tools for Anthropic function calling ────────────────────────────────────
+# ── Tools in OpenAI format ───────────────────────────────────────────────────
 _TOOLS = [
     {
-        "name": "get_env_status",
-        "description": (
-            "Muestra qué claves API están configuradas en el .env y cuáles faltan. "
-            "Los valores se muestran enmascarados (****). Úsalo al inicio para saber el estado."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "set_env_key",
-        "description": (
-            "Guarda o actualiza una variable en el fichero .env. "
-            "Llámala SIEMPRE que el usuario proporcione una API key o valor de configuración."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "key":   {"type": "string", "description": "Nombre de la variable (ej: OPENAI_API_KEY)"},
-                "value": {"type": "string", "description": "Valor a guardar"},
-            },
-            "required": ["key", "value"],
+        "type": "function",
+        "function": {
+            "name": "get_env_status",
+            "description": (
+                "Muestra qué claves API están configuradas en el .env y cuáles faltan. "
+                "Los valores se muestran enmascarados (****). Úsalo al inicio para saber el estado."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
-        "name": "get_key_info",
-        "description": "Devuelve descripción y URL donde obtener una clave API específica.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "key": {"type": "string", "description": "Nombre de la variable (ej: TWITTER_API_KEY)"},
+        "type": "function",
+        "function": {
+            "name": "set_env_key",
+            "description": (
+                "Guarda o actualiza una variable en el fichero .env. "
+                "Llámala SIEMPRE que el usuario proporcione una API key o valor de configuración."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key":   {"type": "string", "description": "Nombre de la variable (ej: OPENAI_API_KEY)"},
+                    "value": {"type": "string", "description": "Valor a guardar"},
+                },
+                "required": ["key", "value"],
             },
-            "required": ["key"],
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_key_info",
+            "description": "Devuelve descripción y URL donde obtener una clave API específica.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Nombre de la variable (ej: TWITTER_API_KEY)"},
+                },
+                "required": ["key"],
+            },
         },
     },
 ]
@@ -200,74 +212,74 @@ def _handle_tool(name: str, inp: dict) -> str:
 
 def chat_with_assistant(messages: list[dict], api_key: str) -> str:
     """
-    Procesa la conversación con el asistente de configuración.
+    Procesa la conversación con el asistente de configuración usando Gemini.
 
     Args:
         messages: lista de {role: 'user'|'assistant', content: str}
-        api_key:  clave Anthropic a usar (puede venir del .env o del cliente)
+        api_key:  clave de Google AI (Gemini) a usar
 
     Returns:
         Texto de respuesta del asistente.
     """
-    import anthropic  # lazy import — the key might not be set at module load
+    import openai  # reuse openai SDK against Gemini's OpenAI-compatible endpoint
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = openai.OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
 
-    # Convert plain text messages to Anthropic format (content can be list or str)
-    def _to_anthropic(msgs: list[dict]) -> list[dict]:
-        result = []
-        for m in msgs:
-            content = m["content"]
-            # Already in Anthropic format (list of blocks)
-            if isinstance(content, list):
-                result.append({"role": m["role"], "content": content})
-            else:
-                result.append({"role": m["role"], "content": str(content)})
-        return result
+    # Build message list with system prompt
+    openai_msgs: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for m in messages:
+        openai_msgs.append({"role": m["role"], "content": str(m["content"])})
 
-    anthropic_msgs = _to_anthropic(messages)
-
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=1024,
-        system=_SYSTEM_PROMPT,
+    response = client.chat.completions.create(
+        model="gemini-2.0-flash",
+        messages=openai_msgs,
         tools=_TOOLS,
-        messages=anthropic_msgs,
     )
 
     # Agentic loop: handle tool calls
-    while response.stop_reason == "tool_use":
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                result_text = _handle_tool(block.name, block.input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result_text,
-                })
+    while response.choices[0].finish_reason == "tool_calls":
+        assistant_msg = response.choices[0].message
+        openai_msgs.append(assistant_msg.to_dict() if hasattr(assistant_msg, "to_dict") else {
+            "role": "assistant",
+            "content": assistant_msg.content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in (assistant_msg.tool_calls or [])
+            ],
+        })
 
-        anthropic_msgs = anthropic_msgs + [
-            {"role": "assistant", "content": response.content},
-            {"role": "user",      "content": tool_results},
-        ]
+        for tc in (assistant_msg.tool_calls or []):
+            try:
+                inp = json.loads(tc.function.arguments)
+            except (json.JSONDecodeError, ValueError):
+                inp = {}
+            result_text = _handle_tool(tc.function.name, inp)
+            openai_msgs.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result_text,
+            })
 
-        response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            system=_SYSTEM_PROMPT,
+        response = client.chat.completions.create(
+            model="gemini-2.0-flash",
+            messages=openai_msgs,
             tools=_TOOLS,
-            messages=anthropic_msgs,
         )
 
-    text_parts = [b.text for b in response.content if hasattr(b, "text") and b.text]
-    return "\n".join(text_parts)
+    return response.choices[0].message.content or ""
 
 
 def resolve_api_key(provided: Optional[str] = None) -> Optional[str]:
-    """Resuelve qué clave Anthropic usar: la del cliente, o la del entorno."""
+    """Resuelve qué clave Gemini usar: la del cliente, o la del entorno."""
     if provided and provided.strip():
         return provided.strip()
     env = _read_env()
-    from_env = env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+    from_env = env.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY", "")
     return from_env if from_env else None
