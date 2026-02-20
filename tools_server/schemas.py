@@ -79,3 +79,23 @@ class ApiHealthResponse(BaseModel):
     redis_configured: bool
     warnings: list[str]
     setup_guide_url: str = "/docs/api-setup"
+
+
+# ─── Chat Asistente ────────────────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(..., description="Historial de la conversación")
+    chat_key: Optional[str] = Field(
+        None,
+        description="Clave Anthropic temporal para el chat (si no está en el .env). Se usa solo en memoria, nunca se persiste.",
+    )
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    model: str = "claude-opus-4-6"

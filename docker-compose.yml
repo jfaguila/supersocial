@@ -92,6 +92,7 @@ services:
       - "8000:8000"
     volumes:
       - george_data:/data
+      - ./.env:/app/.env   # permite al chat-asistente escribir el .env del host
     depends_on:
       postgres:
         condition: service_healthy

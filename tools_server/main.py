@@ -25,6 +25,8 @@ from tools_server.schemas import (
     ApiHealthResponse,
     ApprovePostRequest,
     CycleSummaryResponse,
+    ChatRequest,
+    ChatResponse,
 )
 from tools_server.api_checker import ApiChecker
 from tools_server.cycle_runner import BackgroundCycleRunner
@@ -354,6 +356,47 @@ async def check_api_health():
     checker = app.state.checker
     report = checker.check_all()
     return report
+
+
+# ─────────────────────────────────────────────────────────────
+# CHAT — Asistente IA de configuración
+# ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="Chat con el asistente IA de configuración",
+    tags=["Asistente"],
+)
+async def chat_endpoint(request: ChatRequest):
+    """
+    Conversación con el asistente IA que lee y escribe el `.env` automáticamente.
+
+    El usuario puede decirle sus API keys en lenguaje natural y el asistente
+    las guarda directamente. Ideal para configurar SuperSocial sin tocar ficheros.
+
+    - `messages`: historial de la conversación [{role, content}]
+    - `chat_key`: clave Anthropic temporal (si no está en el .env aún)
+    """
+    from tools_server.chat_handler import chat_with_assistant, resolve_api_key
+
+    api_key = resolve_api_key(request.chat_key)
+    if not api_key:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No hay clave Anthropic disponible. "
+                "Pega tu clave de https://console.anthropic.com en el campo 'Clave del chat' "
+                "o añade ANTHROPIC_API_KEY al fichero .env y reinicia."
+            ),
+        )
+
+    try:
+        msgs = [{"role": m.role, "content": m.content} for m in request.messages]
+        reply = chat_with_assistant(msgs, api_key)
+        return ChatResponse(reply=reply)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error del asistente: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────
