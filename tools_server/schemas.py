@@ -92,7 +92,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., description="Historial de la conversación")
     chat_key: Optional[str] = Field(
         None,
-        description="Clave Anthropic temporal para el chat (si no está en el .env). Se usa solo en memoria, nunca se persiste.",
+        description="Clave Gemini temporal para el chat (si no está en el .env). Se usa solo en memoria, nunca se persiste.",
     )
 
 

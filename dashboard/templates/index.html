@@ -374,7 +374,7 @@
 
       <!-- Key bar -->
       <div class="chat-key-bar" id="chat-key-bar">
-        <label>🔑 Clave Anthropic (solo para el chat):</label>
+        <label>🔑 Clave Gemini (solo para el chat):</label>
         <input type="password" id="chat-api-key" placeholder="AIza..." autocomplete="off" />
         <button class="btn btn-ghost" style="padding:7px 14px;font-size:12px;" onclick="saveChatKey()">Guardar</button>
         <span id="chat-key-status" style="font-size:12px;color:var(--muted);white-space:nowrap;"></span>
@@ -663,7 +663,7 @@
 
     const chatKey = getChatKey();
     if (!chatKey) {
-      toast('Pega tu clave de Anthropic en el campo de arriba primero', 'err');
+      toast('Pega tu clave de Gemini en el campo de arriba primero', 'err');
       document.getElementById('chat-api-key').focus();
       return;
     }
