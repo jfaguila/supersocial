@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SuperSocial — Panel de Control</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #6c63ff;
+      --accent2: #00c896;
+      --danger: #ff4d6d;
+      --warn: #ffb347;
+      --text: #e8eaf6;
+      --muted: #7b82a8;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-brand .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header-brand h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    .header-brand span { font-size: 12px; color: var(--muted); display: block; margin-top: 1px; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.running {
+      background: var(--accent2);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+
+    /* ── NAV TABS ── */
+    .nav {
+      display: flex;
+      gap: 4px;
+      padding: 16px 32px 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nav-tab {
+      padding: 10px 20px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      transition: color 0.2s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active {
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-bottom: 1px solid var(--bg);
+      margin-bottom: -1px;
+      font-weight: 600;
+    }
+
+    /* ── MAIN LAYOUT ── */
+    .main { padding: 32px; max-width: 1100px; margin: 0 auto; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 15px; font-weight: 700;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .icon { font-size: 18px; }
+
+    .grid2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    }
+    @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+
+    /* ── BADGES ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+    }
+    .badge.ok { background: rgba(0,200,150,.15); color: var(--accent2); }
+    .badge.error { background: rgba(255,77,109,.15); color: var(--danger); }
+    .badge.warn { background: rgba(255,179,71,.15); color: var(--warn); }
+    .badge.info { background: rgba(108,99,255,.15); color: var(--accent); }
+
+    /* ── SERVICE ROWS ── */
+    .service-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .service-row:last-child { border-bottom: none; }
+    .service-name { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    .service-name .icon { font-size: 16px; }
+
+    /* ── INPUTS / BUTTONS ── */
+    textarea, input[type=text] {
+      width: 100%; padding: 12px 14px;
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 14px; resize: vertical;
+      transition: border-color 0.2s;
+    }
+    textarea:focus, input[type=text]:focus {
+      outline: none; border-color: var(--accent);
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 22px; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      border: none; transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-success { background: var(--accent2); color: #0f1117; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-ghost {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── PROGRESS PHASE ── */
+    .phase-track {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px;
+    }
+    .phase-step {
+      padding: 5px 12px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: var(--surface2); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .phase-step.done { background: rgba(0,200,150,.15); color: var(--accent2); border-color: var(--accent2); }
+    .phase-step.active { background: rgba(108,99,255,.2); color: var(--accent); border-color: var(--accent); animation: pulse 1.5s infinite; }
+
+    /* ── LOG BOX ── */
+    .log-box {
+      background: #080a10; border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px; line-height: 1.7;
+      max-height: 200px; overflow-y: auto; color: #a0e8c0;
+      margin-top: 14px;
+    }
+    .log-box .log-warn { color: var(--warn); }
+    .log-box .log-err { color: var(--danger); }
+
+    /* ── POSTS TABLE ── */
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    th {
+      text-align: left; padding: 10px 12px;
+      font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.6px; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+
+    .post-preview {
+      font-size: 13px; line-height: 1.5;
+      max-width: 340px; color: var(--text);
+    }
+    .post-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── PLATFORM ICON ── */
+    .platform-icon { font-size: 16px; }
+
+    /* ── METRICS TABLE ── */
+    .metric-val { font-weight: 700; font-size: 15px; }
+    .metric-delta { font-size: 12px; }
+    .metric-delta.up { color: var(--accent2); }
+    .metric-delta.down { color: var(--danger); }
+
+    /* ── EMPTY STATE ── */
+    .empty {
+      text-align: center; padding: 48px 24px; color: var(--muted);
+    }
+    .empty .icon { font-size: 40px; display: block; margin-bottom: 12px; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 20px;
+      font-size: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      transform: translateY(80px); opacity: 0;
+      transition: all 0.3s; z-index: 999;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.ok { border-color: var(--accent2); color: var(--accent2); }
+    #toast.err { border-color: var(--danger); color: var(--danger); }
+
+    /* ── VIDEO CARDS ── */
+    .video-card {
+      display: flex; align-items: flex-start; gap: 16px;
+      padding: 16px 0; border-bottom: 1px solid var(--border);
+    }
+    .video-card:last-child { border-bottom: none; }
+    .video-thumb {
+      width: 54px; height: 96px;
+      background: var(--surface2); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; flex-shrink: 0; border: 1px solid var(--border);
+    }
+    .video-info { flex: 1; }
+    .video-title { font-weight: 700; font-size: 14px; }
+    .video-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── SETUP WIZARD ── */
+    .step-number {
+      width: 28px; height: 28px;
+      background: var(--accent); color: #fff;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .step-number.done { background: var(--accent2); }
+    .step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .step-title { font-weight: 700; font-size: 15px; }
+    .step-desc { font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-brand">
+    <div class="logo">🤖</div>
+    <div>
+      <h1>SuperSocial</h1>
+      <span>Motor de contenido autónomo</span>
+    </div>
+  </div>
+  <div id="global-status" class="status-pill">
+    <div id="status-dot" class="status-dot"></div>
+    <span id="status-text">Cargando...</span>
+  </div>
+</header>
+
+<!-- NAV TABS -->
+<nav class="nav">
+  <button class="nav-tab active" onclick="showTab('setup')">🔧 Configuración</button>
+  <button class="nav-tab" onclick="showTab('control')">🚀 Control</button>
+  <button class="nav-tab" onclick="showTab('posts')">📝 Contenido</button>
+  <button class="nav-tab" onclick="showTab('metrics')">📊 Métricas</button>
+  <button class="nav-tab" onclick="showTab('videos')">🎬 Vídeos</button>
+</nav>
+
+<main class="main">
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 1: CONFIGURACIÓN                       -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-setup" class="tab-panel active">
+    <div class="card">
+      <div class="card-title"><span class="icon">🔧</span> Estado de la configuración</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px;">
+        Aquí ves qué servicios están conectados. Empieza configurando los que aparecen en rojo.
+      </p>
+
+      <!-- LLM -->
+      <div class="step-header">
+        <div class="step-number" id="step1-num">1</div>
+        <div><div class="step-title">Inteligencia Artificial (LLM)</div>
+        <div class="step-desc">Genera el contenido y los scripts de vídeo</div></div>
+      </div>
+      <div id="llm-status-rows">
+        <div class="service-row">
+          <div class="service-name"><span class="icon">🧠</span> OpenAI (GPT-4o)</div>
+          <span id="llm-badge" class="badge warn">Comprobando...</span>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;">Variable: <code>OPENAI_API_KEY</code> en el fichero <code>.env</code></p>
+    </div>
+
+    <div class="card">
+      <div class="step-header">
+        <div class="step-number" id="step2-num">2</div>
+        <div><div class="step-title">Redes sociales</div>
+        <div class="step-desc">Plataformas donde George publicará el contenido</div></div>
+      </div>
+      <div id="platform-rows">
+        <div style="color:var(--muted);font-size:13px;">Cargando plataformas...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="step-header">
+        <div class="step-number" id="step3-num">3</div>
+        <div><div class="step-title">Generación de vídeo</div>
+        <div class="step-desc">Runway Gen-3 (imágenes IA) + ElevenLabs (voz en off)</div></div>
+      </div>
+      <div class="service-row">
+        <div class="service-name"><span class="icon">🎬</span> Runway Gen-3</div>
+        <span id="runway-badge" class="badge warn">No configurado</span>
+      </div>
+      <div class="service-row">
+        <div class="service-name"><span class="icon">🔊</span> ElevenLabs</div>
+        <span id="elevenlabs-badge" class="badge warn">No configurado</span>
+      </div>
+      <div style="margin-top:14px;padding:14px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--muted);">
+        Añade al <code>.env</code>:<br>
+        <code style="color:var(--accent2);">RUNWAYML_API_KEY=tu_key<br>ELEVENLABS_API_KEY=tu_key</code>
+      </div>
+    </div>
+
+    <div style="text-align:right;">
+      <button class="btn btn-ghost" onclick="loadHealth()">↻ Actualizar estado</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 2: CONTROL                             -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-control" class="tab-panel">
+    <div class="grid2">
+
+      <div class="card">
+        <div class="card-title"><span class="icon">🚀</span> Ciclo semanal</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+          George analiza tendencias, genera 7 días de contenido y produce vídeos automáticamente.
+        </p>
+        <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px;">
+          Instrucción estratégica (opcional)
+        </label>
+        <textarea id="strategic-prompt" rows="3"
+          placeholder="Ej: Esta semana enfócate en los servicios de automatización con IA para pymes..."></textarea>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btn-weekly" onclick="runCycle('weekly')">
+            ▶ Iniciar ciclo semanal
+          </button>
+          <button class="btn btn-ghost" id="btn-dry" onclick="runCycle('weekly', true)">
+            👁 Simular (dry run)
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="icon">☀️</span> Ciclo diario</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+          Publica los posts programados del día y recoge métricas de las últimas 24h.
+        </p>
+        <button class="btn btn-success" onclick="runCycle('daily')">▶ Ejecutar ciclo diario</button>
+      </div>
+    </div>
+
+    <div class="card" id="phase-card">
+      <div class="card-title"><span class="icon">⚙️</span> Estado actual</div>
+      <div id="phase-status" style="font-size:13px;color:var(--muted);">Sin ciclo activo.</div>
+      <div class="phase-track" id="phase-track"></div>
+      <div class="log-box" id="log-box" style="display:none;"></div>
+    </div>
+
+    <div class="card" id="last-cycle-card">
+      <div class="card-title"><span class="icon">📋</span> Último ciclo completado</div>
+      <div id="last-cycle-info" style="font-size:13px;color:var(--muted);">Cargando...</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 3: CONTENIDO / POSTS                   -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-posts" class="tab-panel">
+    <div class="card">
+      <div class="card-title"><span class="icon">📝</span> Posts pendientes de revisión</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="filter-all" onclick="filterPosts(null)">Todos</button>
+        <button class="btn btn-ghost" onclick="filterPosts('twitter')">🐦 Twitter</button>
+        <button class="btn btn-ghost" onclick="filterPosts('tiktok')">🎵 TikTok</button>
+        <button class="btn btn-ghost" onclick="filterPosts('linkedin')">💼 LinkedIn</button>
+        <button class="btn btn-ghost" onclick="filterPosts('instagram')">📸 Instagram</button>
+        <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadPosts()">↻ Actualizar</button>
+      </div>
+      <div id="posts-container">
+        <div class="empty"><span class="icon">📭</span>Cargando posts...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 4: MÉTRICAS                            -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-metrics" class="tab-panel">
+    <div class="grid2">
+      <div id="metrics-twitter" class="card">
+        <div class="card-title"><span class="icon">🐦</span> Twitter / X</div>
+        <div class="metrics-body">Cargando...</div>
+      </div>
+      <div id="metrics-tiktok" class="card">
+        <div class="card-title"><span class="icon">🎵</span> TikTok</div>
+        <div class="metrics-body">Cargando...</div>
+      </div>
+      <div id="metrics-linkedin" class="card">
+        <div class="card-title"><span class="icon">💼</span> LinkedIn</div>
+        <div class="metrics-body">Cargando...</div>
+      </div>
+      <div id="metrics-instagram" class="card">
+        <div class="card-title"><span class="icon">📸</span> Instagram</div>
+        <div class="metrics-body">Cargando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 5: VÍDEOS                              -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-videos" class="tab-panel">
+    <div class="card">
+      <div class="card-title"><span class="icon">🎬</span> Vídeos generados</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+        Aquí aparecen los vídeos producidos automáticamente por George vía Runway + ElevenLabs.
+        Cada vídeo es un MP4 vertical (9:16) listo para TikTok, Reels o Shorts.
+      </p>
+      <div id="videos-container">
+        <div class="empty">
+          <span class="icon">🎬</span>
+          Aún no hay vídeos generados.<br>
+          Inicia un ciclo semanal para que George produzca los primeros vídeos.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+  const API = '';   // same origin
+
+  // ── TABS ──
+  function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.classList.add('active');
+
+    if (name === 'setup')   loadHealth();
+    if (name === 'control') { loadStatus(); loadLastCycle(); }
+    if (name === 'posts')   loadPosts();
+    if (name === 'metrics') loadAllMetrics();
+    if (name === 'videos')  loadVideos();
+  }
+
+  // ── TOAST ──
+  function toast(msg, type = 'ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    setTimeout(() => { el.className = ''; }, 3500);
+  }
+
+  // ── STATUS HEADER ──
+  async function loadGlobalStatus() {
+    try {
+      const r = await fetch(API + '/george/status');
+      const d = await r.json();
+      const dot = document.getElementById('status-dot');
+      const txt = document.getElementById('status-text');
+      if (d.is_running) {
+        dot.className = 'status-dot running';
+        txt.textContent = 'George trabajando — ' + (d.current_phase || '...');
+      } else {
+        dot.className = 'status-dot';
+        txt.textContent = 'George inactivo';
+      }
+    } catch(e) {
+      document.getElementById('status-text').textContent = 'Sin conexión';
+    }
+  }
+
+  // ── HEALTH / SETUP ──
+  const PLATFORM_ICONS = { twitter:'🐦', tiktok:'🎵', linkedin:'💼', instagram:'📸' };
+
+  async function loadHealth() {
+    try {
+      const r = await fetch(API + '/george/api-health');
+      const d = await r.json();
+
+      // LLM
+      const llmBadge = document.getElementById('llm-badge');
+      if (d.llm_configured) {
+        llmBadge.className = 'badge ok';
+        llmBadge.textContent = '✓ Conectado — ' + d.llm_model;
+        document.getElementById('step1-num').classList.add('done');
+      } else {
+        llmBadge.className = 'badge error';
+        llmBadge.textContent = '✗ No configurado';
+      }
+
+      // Platforms
+      const rows = document.getElementById('platform-rows');
+      rows.innerHTML = '';
+      let anyPlatform = false;
+      for (const p of d.platforms) {
+        const row = document.createElement('div');
+        row.className = 'service-row';
+        const badge = p.configured
+          ? `<span class="badge ok">✓ Conectado</span>`
+          : `<span class="badge error">✗ Faltan: ${p.missing_keys.slice(0,2).join(', ')}</span>`;
+        row.innerHTML = `
+          <div class="service-name">
+            <span class="icon">${PLATFORM_ICONS[p.platform] || '🔗'}</span>
+            ${p.platform.charAt(0).toUpperCase() + p.platform.slice(1)}
+          </div>
+          ${badge}`;
+        rows.appendChild(row);
+        if (p.configured) anyPlatform = true;
+      }
+      if (anyPlatform) document.getElementById('step2-num').classList.add('done');
+
+      // Video services — check via env (we infer from health warnings)
+      const warnings = d.warnings || [];
+      const hasRunway = !warnings.some(w => w.toLowerCase().includes('runway'));
+      const hasElevenLabs = !warnings.some(w => w.toLowerCase().includes('elevenlabs'));
+
+      const rbadge = document.getElementById('runway-badge');
+      rbadge.className = hasRunway ? 'badge ok' : 'badge warn';
+      rbadge.textContent = hasRunway ? '✓ Configurado' : '⚠ RUNWAYML_API_KEY falta';
+
+      const ebadge = document.getElementById('elevenlabs-badge');
+      ebadge.className = hasElevenLabs ? 'badge ok' : 'badge warn';
+      ebadge.textContent = hasElevenLabs ? '✓ Configurado' : '⚠ ELEVENLABS_API_KEY falta';
+
+      if (hasRunway && hasElevenLabs) document.getElementById('step3-num').classList.add('done');
+
+    } catch(e) {
+      toast('No se puede conectar con el servidor', 'err');
+    }
+  }
+
+  // ── CONTROL ──
+  const ALL_PHASES = [
+    'cycle_start','metrics_pull','feedback_analyze','trend_fetch',
+    'trend_analyze','strategy_select','content_generate','video_pipeline',
+    'publish_execute','cycle_complete'
+  ];
+  const PHASE_LABELS = {
+    cycle_start: '🟢 Inicio',
+    metrics_pull: '📥 Métricas',
+    feedback_analyze: '🔍 Análisis',
+    trend_fetch: '📡 Tendencias',
+    trend_analyze: '🧩 Análisis IA',
+    strategy_select: '🎯 Estrategia',
+    content_generate: '✍️ Contenido',
+    video_pipeline: '🎬 Vídeo',
+    publish_execute: '📤 Publicar',
+    cycle_complete: '✅ Completo',
+  };
+
+  let statusPoll = null;
+
+  async function runCycle(type, dryRun = false) {
+    const btnW = document.getElementById('btn-weekly');
+    const prompt = document.getElementById('strategic-prompt').value.trim();
+
+    btnW.disabled = true;
+    try {
+      const body = type === 'weekly'
+        ? { strategic_prompt: prompt || null, dry_run: dryRun }
+        : {};
+
+      const r = await fetch(API + '/george/run-' + type + '-cycle', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      const d = await r.json();
+
+      if (r.ok) {
+        toast('Ciclo ' + type + ' iniciado ✓', 'ok');
+        document.getElementById('log-box').style.display = 'block';
+        document.getElementById('log-box').innerHTML = '';
+        startStatusPoll();
+      } else {
+        toast('Error: ' + (d.detail || 'ver consola'), 'err');
+        btnW.disabled = false;
+      }
+    } catch(e) {
+      toast('Error de conexión', 'err');
+      btnW.disabled = false;
+    }
+  }
+
+  function startStatusPoll() {
+    if (statusPoll) clearInterval(statusPoll);
+    statusPoll = setInterval(loadStatus, 3000);
+  }
+
+  async function loadStatus() {
+    try {
+      const r = await fetch(API + '/george/status');
+      const d = await r.json();
+
+      const statusEl = document.getElementById('phase-status');
+      const trackEl = document.getElementById('phase-track');
+
+      if (d.is_running) {
+        statusEl.textContent = 'George está en fase: ' + (d.current_phase || '...');
+        statusEl.style.color = 'var(--accent)';
+
+        const currentIdx = ALL_PHASES.indexOf(d.current_phase);
+        trackEl.innerHTML = ALL_PHASES.map((p, i) => {
+          const cls = i < currentIdx ? 'done' : i === currentIdx ? 'active' : '';
+          return `<div class="phase-step ${cls}">${PHASE_LABELS[p] || p}</div>`;
+        }).join('');
+
+        appendLog('⚙️ Fase activa: ' + (d.current_phase || '...'));
+      } else {
+        statusEl.textContent = 'George inactivo.';
+        statusEl.style.color = 'var(--muted)';
+
+        if (d.last_cycle_summary) {
+          trackEl.innerHTML = ALL_PHASES.map(p => {
+            return `<div class="phase-step done">${PHASE_LABELS[p] || p}</div>`;
+          }).join('');
+          appendLog('✅ Ciclo completado.');
+        }
+
+        if (statusPoll) { clearInterval(statusPoll); statusPoll = null; }
+        document.getElementById('btn-weekly').disabled = false;
+        loadLastCycle();
+      }
+
+      loadGlobalStatus();
+    } catch(e) {}
+  }
+
+  function appendLog(msg) {
+    const box = document.getElementById('log-box');
+    const line = document.createElement('div');
+    const ts = new Date().toLocaleTimeString('es-ES');
+    line.textContent = '[' + ts + '] ' + msg;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function loadLastCycle() {
+    try {
+      const r = await fetch(API + '/george/cycles/last?cycle_type=weekly');
+      if (!r.ok) return;
+      const d = await r.json();
+      const el = document.getElementById('last-cycle-info');
+      if (!d.cycle_id) { el.textContent = 'Aún no hay ciclos completados.'; return; }
+      const s = d.summary || {};
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;">
+          <div style="text-align:center;">
+            <div class="metric-val">${s.posts_generated ?? '—'}</div>
+            <div style="font-size:12px;color:var(--muted);">Posts generados</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${s.posts_published ?? '—'}</div>
+            <div style="font-size:12px;color:var(--muted);">Posts publicados</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${(s.video_bundles ?? []).length}</div>
+            <div style="font-size:12px;color:var(--muted);">Vídeos</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:14px;">
+          Prompt: ${d.strategic_prompt || 'ninguno'} &nbsp;·&nbsp; Estado: <span class="badge ok">${d.status}</span>
+        </div>`;
+    } catch(e) {}
+  }
+
+  // ── POSTS ──
+  let currentPlatformFilter = null;
+
+  async function loadPosts(platform) {
+    currentPlatformFilter = platform ?? currentPlatformFilter;
+    const container = document.getElementById('posts-container');
+    container.innerHTML = '<div class="empty"><span class="icon">⌛</span>Cargando...</div>';
+    try {
+      let url = API + '/george/posts/pending?limit=50';
+      if (currentPlatformFilter) url += '&platform=' + currentPlatformFilter;
+      const r = await fetch(url);
+      const d = await r.json();
+      if (!d.posts || d.posts.length === 0) {
+        container.innerHTML = '<div class="empty"><span class="icon">📭</span>No hay posts pendientes.</div>';
+        return;
+      }
+      container.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Plataforma</th>
+              <th>Contenido</th>
+              <th>Tipo</th>
+              <th>Emoción</th>
+              <th>Programado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="posts-tbody"></tbody>
+        </table>`;
+      const tbody = document.getElementById('posts-tbody');
+      for (const p of d.posts) {
+        const tr = document.createElement('tr');
+        const date = p.scheduled_at
+          ? new Date(p.scheduled_at * 1000).toLocaleString('es-ES', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+          : '—';
+        tr.innerHTML = `
+          <td><span class="platform-icon">${PLATFORM_ICONS[p.platform] || '🔗'}</span></td>
+          <td>
+            <div class="post-preview">${escapeHtml(p.preview || '')}</div>
+            <div class="post-meta">${p.char_count} car. · ${p.hook ? escapeHtml(p.hook.slice(0,50)) + '...' : ''}</div>
+          </td>
+          <td><span class="badge info">${p.content_type || '—'}</span></td>
+          <td><span style="font-size:12px;color:var(--muted);">${p.emotion || '—'}</span></td>
+          <td style="font-size:12px;white-space:nowrap;">${date}</td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-success" style="padding:6px 12px;font-size:12px;"
+                onclick="approvePost('${p.post_id}', true)">✓</button>
+              <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;"
+                onclick="approvePost('${p.post_id}', false)">✗</button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+    } catch(e) {
+      container.innerHTML = '<div class="empty"><span class="icon">⚠️</span>Error cargando posts.</div>';
+    }
+  }
+
+  function filterPosts(platform) {
+    currentPlatformFilter = platform;
+    loadPosts();
+  }
+
+  async function approvePost(postId, approved) {
+    try {
+      const r = await fetch(API + '/george/posts/' + postId + '/approve', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ approved, note: '' })
+      });
+      if (r.ok) {
+        toast(approved ? '✓ Post aprobado' : '✗ Post rechazado', approved ? 'ok' : 'err');
+        loadPosts();
+      }
+    } catch(e) { toast('Error', 'err'); }
+  }
+
+  // ── METRICS ──
+  async function loadAllMetrics() {
+    for (const platform of ['twitter','tiktok','linkedin','instagram']) {
+      loadMetrics(platform);
+    }
+  }
+
+  async function loadMetrics(platform) {
+    const card = document.getElementById('metrics-' + platform);
+    const body = card.querySelector('.metrics-body');
+    body.innerHTML = 'Cargando...';
+    try {
+      const r = await fetch(API + '/george/metrics/' + platform + '?weeks=4');
+      if (!r.ok) { body.innerHTML = '<span style="color:var(--muted);font-size:13px;">Sin datos</span>'; return; }
+      const d = await r.json();
+      if (!d.history || d.history.length === 0) {
+        body.innerHTML = '<span style="color:var(--muted);font-size:13px;">Sin datos históricos aún.</span>';
+        return;
+      }
+      const latest = d.history[d.history.length - 1];
+      const delta = latest.follower_delta || 0;
+      body.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <div class="metric-val">${(latest.follower_count || 0).toLocaleString()}</div>
+            <div style="font-size:12px;color:var(--muted);">Seguidores</div>
+            <div class="metric-delta ${delta>=0?'up':'down'}">${delta>=0?'+':''}${delta}</div>
+          </div>
+          <div>
+            <div class="metric-val">${((latest.avg_engagement || 0)*100).toFixed(2)}%</div>
+            <div style="font-size:12px;color:var(--muted);">Engagement</div>
+          </div>
+        </div>
+        <table style="width:100%;font-size:12px;">
+          <thead><tr><th>Semana</th><th>Reach</th><th>Posts</th></tr></thead>
+          <tbody>
+            ${d.history.slice().reverse().map(w => `
+              <tr>
+                <td>${w.week_start || '—'}</td>
+                <td>${(w.avg_reach || 0).toLocaleString()}</td>
+                <td>${w.posts_published || 0}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch(e) {
+      body.innerHTML = '<span style="color:var(--muted);font-size:13px;">No conectado</span>';
+    }
+  }
+
+  // ── VIDEOS ──
+  async function loadVideos() {
+    const container = document.getElementById('videos-container');
+    try {
+      const r = await fetch(API + '/george/cycles/last?cycle_type=weekly');
+      if (!r.ok) return;
+      const d = await r.json();
+      const bundles = d.summary?.video_bundles ?? [];
+      if (bundles.length === 0) return;  // keep empty state message
+
+      container.innerHTML = '';
+      for (const v of bundles) {
+        const div = document.createElement('div');
+        div.className = 'video-card';
+        const dur = v.duration ? Math.round(v.duration) + 's' : '—';
+        div.innerHTML = `
+          <div class="video-thumb">🎬</div>
+          <div class="video-info">
+            <div class="video-title">${PLATFORM_ICONS[v.platform] || ''} ${(v.platform||'').toUpperCase()} — Post #${v.post_id}</div>
+            <div class="video-meta">${v.scenes || 0} escenas · ${dur} · <span class="badge ok" style="font-size:11px;">Listo</span></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;word-break:break-all;">${v.final_video || v.paths?.final_video || '—'}</div>
+          </div>`;
+        container.appendChild(div);
+      }
+    } catch(e) {}
+  }
+
+  // ── UTILS ──
+  function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── BOOT ──
+  loadGlobalStatus();
+  loadHealth();
+  setInterval(loadGlobalStatus, 10000);   // re-check status every 10s
+</script>
+</body>
+</html>

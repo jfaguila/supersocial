@@ -32,6 +32,11 @@ class ApiChecker:
         if not self._s.openai_api_key:
             warnings.append("❌ OPENAI_API_KEY no configurada — George no puede generar contenido")
 
+        if not self._s.runwayml_api_key:
+            warnings.append("⚠️  runway: RUNWAYML_API_KEY no configurada — sin generación de vídeo")
+        if not self._s.elevenlabs_api_key:
+            warnings.append("⚠️  elevenlabs: ELEVENLABS_API_KEY no configurada — sin voz en off")
+
         any_platform_ready = any(p.configured for p in platforms)
         llm_ready = bool(self._s.openai_api_key)
 

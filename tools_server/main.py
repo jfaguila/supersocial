@@ -7,12 +7,14 @@ a George a través de estos endpoints HTTP.
 Arrancar:
     uvicorn tools_server.main:app --host 0.0.0.0 --port 8000 --reload
 """
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from tools_server.schemas import (
     RunCycleRequest,
@@ -48,6 +50,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_DASHBOARD_HTML = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "dashboard", "templates", "index.html",
+)
+
+
+# ─────────────────────────────────────────────────────────────
+# DASHBOARD — Panel de control web
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/", include_in_schema=False)
+async def dashboard():
+    """Sirve el panel de control interactivo de George."""
+    return FileResponse(_DASHBOARD_HTML, media_type="text/html")
 
 
 # ─────────────────────────────────────────────────────────────
