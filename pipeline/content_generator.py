@@ -3,7 +3,13 @@ Capa 3 — Multi-platform content generation.
 
 Takes scored TrendSignal rows and generates ContentDraft entries
 for each target platform (Instagram, TikTok, LinkedIn, X, YouTube).
+
+For video platforms (TikTok, YouTube), the generated script is
+automatically passed through the video pipeline (Runway + ElevenLabs)
+to produce a ready-to-publish .mp4 file.
 """
+import logging
+import os
 import time
 from typing import Optional
 
@@ -12,6 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from content.llm_client import LLMClient
 from memory.models import ContentDraft, TrendSignal
+
+logger = logging.getLogger(__name__)
+
+# Platforms that get auto-video generation
+VIDEO_PLATFORMS = {"tiktok", "youtube"}
+VIDEO_EXPORT_DIR = os.environ.get("VIDEO_EXPORT_DIR", "/data/video_exports")
 
 # Platform-specific generation instructions
 PLATFORM_SPECS: dict[str, dict] = {
@@ -97,17 +109,19 @@ class ContentGenerator:
         llm: Optional[LLMClient] = None,
         platforms: Optional[list[str]] = None,
         language: str = "es",
+        generate_videos: bool = True,
     ):
         self.llm = llm or LLMClient()
         self.platforms = platforms or ["instagram", "tiktok", "linkedin", "twitter"]
         self.language = language
+        self.generate_videos = generate_videos
 
     async def generate_from_signals(
         self,
         session: AsyncSession,
         signals: list[TrendSignal],
     ) -> list[ContentDraft]:
-        """Generate content for each signal × platform combination."""
+        """Generate content for each signal x platform combination."""
         drafts: list[ContentDraft] = []
         now = int(time.time())
 
@@ -121,6 +135,13 @@ class ContentGenerator:
                 if not draft:
                     continue
 
+                # Determine if this draft needs video rendering
+                needs_video = (
+                    self.generate_videos
+                    and platform in VIDEO_PLATFORMS
+                    and spec["content_type"] in ("script", "idea")
+                )
+
                 row = ContentDraft(
                     signal_id=signal.id,
                     platform=platform,
@@ -132,10 +153,25 @@ class ContentGenerator:
                     narrative_type=signal.viral_angle or "",
                     char_count=len(draft["content"]),
                     status="pending_review",
+                    video_status="pending" if needs_video else None,
                     created_at=now,
                     updated_at=now,
                 )
                 session.add(row)
+                await session.flush()  # get the row ID
+
+                # Render video if needed
+                if needs_video:
+                    video_result = await self._render_video(
+                        row, platform, signal, draft["content"]
+                    )
+                    if video_result:
+                        row.video_path = video_result.get("video_path", "")
+                        row.video_srt_path = video_result.get("srt_path", "")
+                        row.video_status = "ready"
+                    else:
+                        row.video_status = "failed"
+
                 drafts.append(row)
 
             # Mark signal as used
@@ -143,6 +179,68 @@ class ContentGenerator:
 
         await session.flush()
         return drafts
+
+    async def _render_video(
+        self,
+        draft: ContentDraft,
+        platform: str,
+        signal: TrendSignal,
+        script_text: str,
+    ) -> Optional[dict]:
+        """Run the video pipeline on a script draft.
+
+        Returns {"video_path": ..., "srt_path": ...} or None on failure.
+        """
+        try:
+            from config.settings import get_settings
+            from video.script_formatter import ScriptFormatter
+            from video.render_exporter import VideoPipeline
+
+            settings = get_settings()
+
+            # Check that video APIs are configured
+            if not getattr(settings, "runwayml_api_key", ""):
+                logger.warning(
+                    f"[content_generator] Runway API key not set — skipping video for draft {draft.id}"
+                )
+                return None
+
+            # Format the raw script into timed segments
+            formatter = ScriptFormatter()
+            formatted = formatter.format(
+                raw_script=script_text,
+                platform=platform,
+                title=signal.keyword[:40],
+            )
+
+            # Run the full video pipeline
+            output_dir = os.path.join(VIDEO_EXPORT_DIR, f"pipeline_{draft.id}")
+            pipeline = VideoPipeline(settings=settings)
+            result = await pipeline.run(
+                script=formatted,
+                output_dir=output_dir,
+                niches=settings.niches,
+                business_context="B2B AI automation agency",
+            )
+
+            if result.success:
+                logger.info(
+                    f"[content_generator] video ready: {result.final_video_path} "
+                    f"({result.scenes_count} scenes, {result.duration_seconds}s)"
+                )
+                return {
+                    "video_path": result.final_video_path,
+                    "srt_path": result.srt_path,
+                }
+            else:
+                logger.warning(
+                    f"[content_generator] video failed for draft {draft.id}: {result.error}"
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"[content_generator] video pipeline error: {e}")
+            return None
 
     async def _generate_one(
         self, signal: TrendSignal, platform: str, spec: dict

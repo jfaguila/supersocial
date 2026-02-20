@@ -52,6 +52,10 @@ def upgrade() -> None:
         sa.Column("emotional_tone", sa.String(50)),
         sa.Column("narrative_type", sa.String(50)),
         sa.Column("char_count", sa.Integer(), default=0),
+        # Video (for TikTok/YouTube/Reels)
+        sa.Column("video_path", sa.String(500)),
+        sa.Column("video_srt_path", sa.String(500)),
+        sa.Column("video_status", sa.String(20)),
         # Review workflow
         sa.Column("status", sa.String(20), default="generated"),
         sa.Column("reviewer_note", sa.Text()),
