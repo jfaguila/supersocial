@@ -1,220 +1,229 @@
 /**
- * PDF text extraction and Spanish payroll (nómina) data parser.
- * Uses pdf.js to read PDFs client-side. Extracts text with position data
- * to reconstruct the table layout of a Spanish payslip.
+ * PDF + Image text extraction and Spanish payroll (nómina) parser.
+ *
+ * - PDFs:   uses pdf.js to extract text directly
+ * - Images: uses Tesseract.js (OCR) to recognise Spanish text
+ *
+ * Then a shared parser pulls salary concepts out of the raw text.
  */
 import * as pdfjsLib from 'pdfjs-dist';
+import Tesseract from 'tesseract.js';
 
-// Worker setup: use CDN for reliability with CRA/webpack
+// pdf.js worker — CDN is most reliable with CRA / webpack 5
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-/**
- * Parse a Spanish number string: "1.507,00" → 1507.00
- */
-function parseSpanishNumber(str) {
-  if (!str) return null;
-  let clean = str.trim();
-  clean = clean.replace(/[€\s]/g, '');
-  if (clean.includes(',') && clean.includes('.')) {
-    clean = clean.replace(/\./g, '').replace(',', '.');
-  } else if (clean.includes(',')) {
-    clean = clean.replace(',', '.');
-  }
-  const num = parseFloat(clean);
-  return isNaN(num) ? null : num;
-}
+// ─────────────────────────────────────────────────
+// 1.  TEXT EXTRACTION
+// ─────────────────────────────────────────────────
 
 /**
- * Extract text items with positions from a PDF, grouped into lines.
- * Returns an array of lines, each line is a string with all items on that y-position.
+ * Extract text from a PDF, reconstructing lines by Y-position.
  */
 export async function extractTextFromPDF(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
 
-  const allItems = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
+  const items = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    for (const item of content.items) {
-      if (item.str.trim()) {
-        allItems.push({
-          text: item.str.trim(),
-          x: Math.round(item.transform[4]),
-          y: Math.round(item.transform[5]),
+    for (const it of content.items) {
+      if (it.str.trim()) {
+        items.push({
+          text: it.str.trim(),
+          x: Math.round(it.transform[4]),
+          y: Math.round(it.transform[5]),
         });
       }
     }
   }
 
-  // Group by Y position (same row = within 3px tolerance)
-  allItems.sort((a, b) => b.y - a.y || a.x - b.x); // top to bottom, left to right
+  // Group by row (Y ± 3 px)
+  items.sort((a, b) => b.y - a.y || a.x - b.x);
   const lines = [];
-  let currentLine = [];
-  let currentY = allItems.length > 0 ? allItems[0].y : 0;
+  let row = [];
+  let curY = items[0]?.y ?? 0;
 
-  for (const item of allItems) {
-    if (Math.abs(item.y - currentY) > 3) {
-      if (currentLine.length > 0) {
-        currentLine.sort((a, b) => a.x - b.x);
-        lines.push(currentLine.map((i) => i.text).join('  '));
-      }
-      currentLine = [item];
-      currentY = item.y;
+  for (const it of items) {
+    if (Math.abs(it.y - curY) > 3) {
+      row.sort((a, b) => a.x - b.x);
+      lines.push(row.map((r) => r.text).join('  '));
+      row = [it];
+      curY = it.y;
     } else {
-      currentLine.push(item);
+      row.push(it);
     }
   }
-  if (currentLine.length > 0) {
-    currentLine.sort((a, b) => a.x - b.x);
-    lines.push(currentLine.map((i) => i.text).join('  '));
+  if (row.length) {
+    row.sort((a, b) => a.x - b.x);
+    lines.push(row.map((r) => r.text).join('  '));
   }
 
   return lines.join('\n');
 }
 
 /**
- * Extract all Spanish-format numbers from a string.
- * Returns array of parsed floats.
+ * Extract text from an image via Tesseract OCR (Spanish).
+ * @param {File} file  – JPEG / PNG image
+ * @param {function} onProgress – optional (0-100)
  */
-function extractNumbers(str) {
-  // Match Spanish numbers: 1.507,00 or 1507,00 or 1507.00 or 30 or 30,00
-  const matches = str.match(/\d[\d.]*,\d{2}|\d+\.\d{2}|\d+/g) || [];
-  return matches
-    .map(parseSpanishNumber)
-    .filter((n) => n !== null && n >= 0);
+export async function extractTextFromImage(file, onProgress) {
+  const worker = await Tesseract.createWorker('spa', 1, {
+    logger: (m) => {
+      if (onProgress && m.status === 'recognizing text') {
+        onProgress(Math.round((m.progress || 0) * 100));
+      }
+    },
+  });
+
+  const { data } = await worker.recognize(file);
+  await worker.terminate();
+  return data.text;
 }
 
-/**
- * Find a salary amount near a keyword. Strategy:
- * - Find the line containing the keyword
- * - Extract all numbers from that line
- * - Return the largest number > minValue (salary amounts are bigger than day counts)
- */
-function findSalaryAmount(lines, patterns, minValue = 50) {
-  const text = lines.toLowerCase();
-  for (const pattern of patterns) {
-    const regex = new RegExp(pattern, 'im');
-    const match = text.match(regex);
-    if (match) {
-      // Get the line containing this match
-      const matchPos = match.index;
-      // Find the line boundaries
-      const lineStart = text.lastIndexOf('\n', matchPos) + 1;
-      const lineEnd = text.indexOf('\n', matchPos);
-      const line = text.substring(lineStart, lineEnd === -1 ? text.length : lineEnd);
+// ─────────────────────────────────────────────────
+// 2.  NUMBER HELPERS
+// ─────────────────────────────────────────────────
 
-      const numbers = extractNumbers(line);
-      // Filter out small numbers (day counts like 30, 31) and pick the best salary amount
-      const salaryNumbers = numbers.filter((n) => n >= minValue);
-      if (salaryNumbers.length > 0) {
-        // Return the first salary-sized number (typically the monthly amount)
-        return salaryNumbers[0];
-      }
-      // If no number > minValue, try any number
-      if (numbers.length > 0) {
-        return numbers[numbers.length - 1]; // last number on the line
-      }
+/** Parse a single Spanish-format number: "1.507,00" → 1507  */
+function parseES(str) {
+  if (!str) return null;
+  let c = str.replace(/[€\s]/g, '');
+  if (c.includes(',') && c.includes('.')) c = c.replace(/\./g, '').replace(',', '.');
+  else if (c.includes(',')) c = c.replace(',', '.');
+  const n = parseFloat(c);
+  return isNaN(n) ? null : n;
+}
+
+/** Pull every Spanish-format number out of a string. */
+function pullNumbers(str) {
+  // Matches: 1.507,00 | 1507,00 | 1507.00 | 507 | 30,00
+  const hits = str.match(/\d[\d.]*,\d{2}|\d+\.\d{2}|\d+/g) || [];
+  return hits.map(parseES).filter((n) => n !== null && n >= 0);
+}
+
+// ─────────────────────────────────────────────────
+// 3.  PAYROLL PARSER
+// ─────────────────────────────────────────────────
+
+/**
+ * Given a block of text (from PDF or OCR), find the line matching
+ * any of `patterns` and return the best numeric value on that line.
+ *
+ *   minVal – ignore numbers smaller than this (filters day-counts
+ *            like "30" when we're looking for a salary > 200).
+ */
+function findAmount(allLines, patterns, minVal = 50) {
+  for (const pat of patterns) {
+    const re = new RegExp(pat, 'i');
+    for (const line of allLines) {
+      if (!re.test(line)) continue;
+      const nums = pullNumbers(line).filter((n) => n >= minVal);
+      if (nums.length) return nums[0]; // first salary-sized number
+      // fallback: any number on the line
+      const any = pullNumbers(line);
+      if (any.length) return any[any.length - 1];
     }
   }
   return null;
 }
 
 /**
- * Parse payroll data from extracted PDF text.
+ * Main parser – returns an object with the fields the engine expects.
  */
-export function parsePayrollText(text) {
+export function parsePayrollText(rawText) {
+  // Normalise OCR artefacts
+  const text = rawText
+    .replace(/[|¦]/g, '')          // table borders
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ');      // collapse spaces
+
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const result = {};
 
-  // Debug: store raw text for troubleshooting
-  result._rawTextPreview = text.substring(0, 500);
+  // Store preview for debug
+  result._rawTextPreview = lines.slice(0, 30).join('\n');
 
-  // --- Salario Base ---
-  const salarioBase = findSalaryAmount(text, [
+  // — Salario Base —
+  const sb = findAmount(lines, [
     'salario\\s*base',
     'sueldo\\s*base',
     'sal\\.?\\s*base',
+    's\\.?\\s*base',
     'retrib.*base',
   ], 200);
-  if (salarioBase) result.salarioBase = String(salarioBase);
+  if (sb) result.salarioBase = String(sb);
 
-  // --- Plus Convenio ---
-  const plusConvenio = findSalaryAmount(text, [
-    'plus\\s*convenio',
-    'compl.*convenio',
+  // — Plus Convenio —
+  const pc = findAmount(lines, [
     'plus\\s*conv',
-    'mejora\\s*vol',
-    'compl.*puesto',
+    'compl.*conv',
     'plus\\s*puesto',
+    'compl.*puesto',
+    'mejora\\s*vol',
+    'plus\\s*actividad',
+    'plus\\s*productividad',
   ], 10);
-  if (plusConvenio) result.plusConvenio = String(plusConvenio);
+  if (pc) result.plusConvenio = String(pc);
 
-  // --- Antigüedad ---
-  const antiguedad = findSalaryAmount(text, [
-    'antig[uü]edad',
+  // — Antigüedad —
+  const ant = findAmount(lines, [
+    'antig[uü\\.]',
     'trienio',
-    'compl.*antig',
+    'complemento.*antig',
     'plus.*antig',
     'quinquenio',
+    'bienio',
   ], 5);
-  if (antiguedad) result.valorAntiguedad = String(antiguedad);
+  if (ant) result.valorAntiguedad = String(ant);
 
-  // --- Nocturnidad ---
-  const nocturnidad = findSalaryAmount(text, [
-    'nocturnidad',
-    'plus.*noct',
-    'compl.*noct',
+  // — Nocturnidad —
+  const noc = findAmount(lines, [
+    'nocturn',
+    'plus.*noche',
     'turno.*noche',
     'nocturno',
   ], 5);
-  if (nocturnidad) result.valorNocturnidad = String(nocturnidad);
+  if (noc) result.valorNocturnidad = String(noc);
 
-  // --- Horas nocturnas ---
-  const horasNoct = findSalaryAmount(text, [
+  // — Horas nocturnas —
+  const hn = findAmount(lines, [
     'horas?.*noct',
-    'h\\.?.*nocturnas',
+    'h\\.?.*nocturna',
   ], 1);
-  if (horasNoct && horasNoct < 200) result.horasNocturnas = String(horasNoct);
+  if (hn && hn < 200) result.horasNocturnas = String(hn);
 
-  // --- Dietas ---
-  const dietas = findSalaryAmount(text, [
-    'dietas?[^s]',
+  // — Dietas / transporte —
+  const di = findAmount(lines, [
+    'dietas?\\b',
     'plus.*transporte',
     'locomoci',
     'kilometraje',
     'manutenci',
-    'quebranto.*moneda',
+    'quebranto',
   ], 5);
-  if (dietas) result.dietas = String(dietas);
+  if (di) result.dietas = String(di);
 
-  // --- Pagas ---
-  const pagasMatch = text.match(/(\d{2})\s*pagas/i);
-  if (pagasMatch) {
-    const p = parseInt(pagasMatch[1]);
+  // — Pagas —
+  const pm = text.match(/(\d{2})\s*pagas/i);
+  if (pm) {
+    const p = parseInt(pm[1]);
     if ([12, 14, 15].includes(p)) result.pagas = String(p);
   }
 
-  // --- Prorrateo ---
-  if (/prorrat/i.test(text)) {
-    result.prorrateo = true;
-  }
+  // — Prorrateo —
+  if (/prorrat/i.test(text)) result.prorrateo = true;
 
-  // --- Detect convenio from text ---
-  const textLower = text.toLowerCase();
-  if (/mercadona/i.test(textLower)) {
-    result.convenio = 'mercadona';
-  } else if (/leroy\s*merlin/i.test(textLower)) {
-    result.convenio = 'leroy_merlin';
-  } else if (/transporte\s*sanitario/i.test(textLower)) {
-    result.convenio = 'transporte_sanitario_andalucia';
-  } else if (/hosteler[ií]a/i.test(textLower)) {
-    result.convenio = 'hosteleria';
-  } else if (/comercio/i.test(textLower)) {
-    result.convenio = 'comercio';
-  } else if (/construcci[oó]n/i.test(textLower)) {
-    result.convenio = 'construccion';
-  }
+  // — Convenio detection —
+  const lo = text.toLowerCase();
+  if (/mercadona/i.test(lo))               result.convenio = 'mercadona';
+  else if (/leroy\s*merlin/i.test(lo))     result.convenio = 'leroy_merlin';
+  else if (/transporte\s*sanitario/i.test(lo)) result.convenio = 'transporte_sanitario_andalucia';
+  else if (/ambulancia/i.test(lo))         result.convenio = 'transporte_sanitario_andalucia';
+  else if (/hosteler[ií]a/i.test(lo))      result.convenio = 'hosteleria';
+  else if (/comercio/i.test(lo))           result.convenio = 'comercio';
+  else if (/construcci[oó]n/i.test(lo))    result.convenio = 'construccion';
 
   return result;
 }

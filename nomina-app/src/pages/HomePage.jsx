@@ -8,7 +8,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import DarkModeToggle from '../components/DarkModeToggle';
 import InstructionsModal from '../components/InstructionsModal';
 import { validatePayroll, DEMO_EXAMPLES, DEFAULT_CATEGORIES, CONVENTION_CATEGORY_KEYS } from '../utils/payrollEngine';
-import { extractTextFromPDF, parsePayrollText } from '../utils/pdfExtractor';
+import { extractTextFromPDF, extractTextFromImage, parsePayrollText } from '../utils/pdfExtractor';
 
 const HomePage = () => {
   const { t } = useLanguage();
@@ -54,34 +54,45 @@ const HomePage = () => {
     setLoadingProgress(10);
 
     try {
+      let rawText = '';
+      const isPDF = selectedFile.type === 'application/pdf';
+      const isImage = selectedFile.type.startsWith('image/');
+
+      // ── Extract text from file ──
+      if (isPDF) {
+        setLoadingMessage('Extrayendo texto del PDF...');
+        setLoadingProgress(25);
+        try {
+          rawText = await extractTextFromPDF(selectedFile);
+        } catch (err) {
+          console.error('PDF extraction error:', err);
+        }
+        setLoadingProgress(60);
+      } else if (isImage) {
+        setLoadingMessage('Leyendo imagen con OCR (puede tardar unos segundos)...');
+        setLoadingProgress(15);
+        try {
+          rawText = await extractTextFromImage(selectedFile, (pct) => {
+            setLoadingProgress(15 + Math.round(pct * 0.55)); // 15-70
+          });
+        } catch (err) {
+          console.error('OCR error:', err);
+        }
+        setLoadingProgress(70);
+      }
+
+      // ── Parse salary concepts ──
       let extracted = {};
       let rawPreview = '';
 
-      // Extract text from PDF
-      if (selectedFile.type === 'application/pdf') {
-        setLoadingMessage('Extrayendo texto del PDF...');
-        setLoadingProgress(30);
-
-        let pdfText = '';
-        try {
-          pdfText = await extractTextFromPDF(selectedFile);
-        } catch (pdfErr) {
-          console.error('PDF extraction error:', pdfErr);
-          // If pdf.js fails, continue with empty extraction
-          pdfText = '';
-        }
-        setLoadingProgress(60);
-
-        if (pdfText && pdfText.trim().length > 0) {
-          setLoadingMessage('Analizando conceptos salariales...');
-          extracted = parsePayrollText(pdfText);
-          rawPreview = extracted._rawTextPreview || pdfText.substring(0, 300);
-          delete extracted._rawTextPreview;
-        }
-        setLoadingProgress(85);
-      } else {
-        setLoadingProgress(85);
+      if (rawText && rawText.trim().length > 0) {
+        setLoadingMessage('Analizando conceptos salariales...');
+        setLoadingProgress(80);
+        extracted = parsePayrollText(rawText);
+        rawPreview = extracted._rawTextPreview || rawText.substring(0, 500);
+        delete extracted._rawTextPreview;
       }
+      setLoadingProgress(90);
 
       // Count how many fields were found
       const fieldsFound = ['salarioBase', 'plusConvenio', 'valorAntiguedad',
@@ -89,8 +100,8 @@ const HomePage = () => {
 
       setExtractionInfo({
         fieldsFound,
-        rawPreview: rawPreview || '',
-        isImage: selectedFile.type !== 'application/pdf',
+        rawPreview: rawPreview || '(no se pudo extraer texto)',
+        isImage,
       });
 
       // Merge: extracted data takes priority, then user's convenio selection as fallback
@@ -444,16 +455,28 @@ const HomePage = () => {
               </div>
 
               {/* Extraction feedback */}
-              {extractionInfo && extractionInfo.fieldsFound === 0 && !extractionInfo.isImage && (
+              {extractionInfo && extractionInfo.fieldsFound === 0 && (
                 <div className="p-4 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 text-sm">
-                  <p className="font-bold mb-1">No hemos podido extraer datos automaticamente del PDF.</p>
-                  <p>Esto puede pasar si el PDF es una imagen escaneada o tiene un formato no estandar. Introduce los datos a mano.</p>
+                  <p className="font-bold mb-1">No hemos podido extraer datos automaticamente.</p>
+                  <p>
+                    {extractionInfo.isImage
+                      ? 'El OCR no ha detectado los conceptos salariales. Si la imagen es borrosa o esta inclinada, prueba con una foto mas nitida.'
+                      : 'El PDF puede ser una imagen escaneada o tener un formato no estandar.'}
+                    {' '}Introduce los datos a mano.
+                  </p>
                   {extractionInfo.rawPreview && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-xs text-yellow-600 dark:text-yellow-500">Ver texto detectado (debug)</summary>
-                      <pre className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">{extractionInfo.rawPreview}</pre>
+                      <pre className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">{extractionInfo.rawPreview}</pre>
                     </details>
                   )}
+                </div>
+              )}
+
+              {extractionInfo && extractionInfo.fieldsFound > 0 && (
+                <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 text-sm">
+                  <p className="font-bold">Datos extraidos correctamente ({extractionInfo.fieldsFound} concepto{extractionInfo.fieldsFound > 1 ? 's' : ''} detectado{extractionInfo.fieldsFound > 1 ? 's' : ''}).</p>
+                  <p>Revisa que los importes coincidan con tu nomina antes de verificar.</p>
                 </div>
               )}
 
