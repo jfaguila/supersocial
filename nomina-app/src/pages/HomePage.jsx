@@ -43,7 +43,7 @@ const HomePage = () => {
   // State for extraction info shown in Step 2
   const [extractionInfo, setExtractionInfo] = useState(null);
 
-  // Step 1 -> Step 2: Process uploaded file and extract data
+  // Step 1 -> Step 2 (manual fallback) or Step 3 (direct results)
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
@@ -94,24 +94,14 @@ const HomePage = () => {
       }
       setLoadingProgress(90);
 
-      // Count how many fields were found
-      const fieldsFound = ['salarioBase', 'plusConvenio', 'valorAntiguedad',
-        'valorNocturnidad', 'dietas'].filter(k => extracted[k]).length;
-
-      setExtractionInfo({
-        fieldsFound,
-        rawPreview: rawPreview || '(no se pudo extraer texto)',
-        isImage,
-      });
-
-      // Merge: extracted data takes priority, then user's convenio selection as fallback
+      // Merge: extracted data takes priority, then user's convenio selection
       const convenio = extracted.convenio || uploadData.convenio;
       const validCats = CONVENTION_CATEGORY_KEYS[convenio] || [];
       const categoria = validCats.includes(uploadData.categoria)
         ? uploadData.categoria
         : (DEFAULT_CATEGORIES[convenio] || validCats[0] || 'empleado');
 
-      const prefilledData = {
+      const finalData = {
         convenio,
         categoria,
         salarioBase: extracted.salarioBase || '',
@@ -124,15 +114,42 @@ const HomePage = () => {
         prorrateo: extracted.prorrateo || false
       };
 
-      setReviewData(prefilledData);
-      setLoadingProgress(100);
+      const fieldsFound = ['salarioBase', 'plusConvenio', 'valorAntiguedad',
+        'valorNocturnidad', 'dietas'].filter(k => extracted[k]).length;
 
-      setTimeout(() => {
-        setLoading(false);
-        setLoadingProgress(null);
-        setLoadingMessage('');
-        setStep(2);
-      }, 300);
+      // ── Decision: if we found at least the salary, go DIRECT to results ──
+      if (extracted.salarioBase) {
+        setLoadingMessage('Comparando con el convenio...');
+        setLoadingProgress(95);
+        const validationResults = validatePayroll(finalData);
+        setResults(validationResults);
+        setLoadingProgress(100);
+
+        setExtractionInfo({ fieldsFound, rawPreview, isImage });
+
+        setTimeout(() => {
+          setLoading(false);
+          setLoadingProgress(null);
+          setLoadingMessage('');
+          setStep(3);
+        }, 300);
+      } else {
+        // No salary found → fallback to manual form
+        setReviewData(finalData);
+        setExtractionInfo({
+          fieldsFound,
+          rawPreview: rawPreview || '(no se pudo extraer texto)',
+          isImage,
+        });
+        setLoadingProgress(100);
+
+        setTimeout(() => {
+          setLoading(false);
+          setLoadingProgress(null);
+          setLoadingMessage('');
+          setStep(2);
+        }, 300);
+      }
 
     } catch (err) {
       handleError(err);
@@ -513,6 +530,15 @@ const HomePage = () => {
                   Nueva verificacion
                 </button>
               </div>
+              {/* Show extraction debug info if available */}
+              {extractionInfo && extractionInfo.rawPreview && (
+                <details className="glass-card p-4 text-sm text-gray-500 dark:text-gray-400">
+                  <summary className="cursor-pointer font-medium">
+                    Datos extraidos del archivo ({extractionInfo.fieldsFound} concepto{extractionInfo.fieldsFound !== 1 ? 's' : ''} detectado{extractionInfo.fieldsFound !== 1 ? 's' : ''})
+                  </summary>
+                  <pre className="mt-2 text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap">{extractionInfo.rawPreview}</pre>
+                </details>
+              )}
               <ResultsDisplay results={results} />
             </motion.div>
           )}
