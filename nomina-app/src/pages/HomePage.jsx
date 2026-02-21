@@ -7,7 +7,7 @@ import ResultsDisplay from '../components/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DarkModeToggle from '../components/DarkModeToggle';
 import InstructionsModal from '../components/InstructionsModal';
-import { validatePayroll, DEMO_EXAMPLES } from '../utils/payrollEngine';
+import { validatePayroll, DEMO_EXAMPLES, DEFAULT_CATEGORIES, CONVENTION_CATEGORY_KEYS } from '../utils/payrollEngine';
 
 const HomePage = () => {
   const { t } = useLanguage();
@@ -313,7 +313,13 @@ const HomePage = () => {
                         <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Convenio Aplicable</label>
                         <select
                           value={uploadData.convenio}
-                          onChange={(e) => setUploadData({ ...uploadData, convenio: e.target.value })}
+                          onChange={(e) => {
+                            const newConvenio = e.target.value;
+                            const validCats = CONVENTION_CATEGORY_KEYS[newConvenio] || [];
+                            const currentCat = uploadData.categoria;
+                            const newCat = validCats.includes(currentCat) ? currentCat : (DEFAULT_CATEGORIES[newConvenio] || validCats[0] || 'empleado');
+                            setUploadData({ convenio: newConvenio, categoria: newCat });
+                          }}
                           className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         >
                           <option value="general">Convenio General</option>

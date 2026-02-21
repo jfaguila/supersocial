@@ -66,11 +66,38 @@ const SENIORITY_RATES = {
 
 const safeNum = (val) => {
   if (val === null || val === undefined || val === '') return 0;
-  const parsed = parseFloat(val);
+  let str = String(val).trim();
+  // Handle Spanish number format: 1.350,50 → 1350.50
+  if (str.includes(',') && str.includes('.')) {
+    // Both separators: dots are thousands, comma is decimal
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (str.includes(',')) {
+    // Only comma: treat as decimal separator (1350,50 → 1350.50)
+    str = str.replace(',', '.');
+  }
+  // Remove any non-numeric chars except dot and minus
+  str = str.replace(/[^\d.\-]/g, '');
+  const parsed = parseFloat(str);
   return isNaN(parsed) ? 0 : parsed;
 };
 
 const TOLERANCE = 5.0; // EUR tolerance for "correct" comparisons
+
+// Default category per convention (first/most common category)
+export const DEFAULT_CATEGORIES = {
+  general: 'empleado',
+  hosteleria: 'empleado',
+  comercio: 'empleado',
+  construccion: 'empleado',
+  transporte_sanitario_andalucia: 'tes_conductor',
+  mercadona: 'personal_base',
+  leroy_merlin: 'profesional',
+};
+
+// Valid categories per convention
+export const CONVENTION_CATEGORY_KEYS = Object.fromEntries(
+  Object.entries(CONVENTION_TABLES).map(([conv, cats]) => [conv, Object.keys(cats)])
+);
 
 /**
  * Validates payroll data against convention tables.

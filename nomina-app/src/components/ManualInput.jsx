@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { DEFAULT_CATEGORIES, CONVENTION_CATEGORY_KEYS } from '../utils/payrollEngine';
 
 const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false }) => {
   const [formData, setFormData] = useState({
@@ -28,10 +29,22 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    if (name === 'convenio') {
+      // Reset category to a valid default when convenio changes
+      const validCats = CONVENTION_CATEGORY_KEYS[value] || [];
+      const currentCat = formData.categoria;
+      const newCat = validCats.includes(currentCat) ? currentCat : (DEFAULT_CATEGORIES[value] || validCats[0] || 'empleado');
+      setFormData(prev => ({
+        ...prev,
+        convenio: value,
+        categoria: newCat
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
+    }
   };
 
   const handleSubmit = (e) => {
@@ -123,39 +136,39 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Salario Base Mensual (EUR)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="salarioBase"
                   value={formData.salarioBase}
                   onChange={handleChange}
-                  placeholder="0.00"
+                  placeholder="Ej: 1.350,50"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                  step="0.01"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Plus Convenio / Extras (EUR)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="plusConvenio"
                   value={formData.plusConvenio}
                   onChange={handleChange}
-                  placeholder="0.00"
+                  placeholder="Ej: 80,00"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                  step="0.01"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Plus Antiguedad (EUR)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="valorAntiguedad"
                   value={formData.valorAntiguedad}
                   onChange={handleChange}
-                  placeholder="0.00"
+                  placeholder="Ej: 40,50"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                  step="0.01"
                 />
               </div>
             </div>
@@ -172,7 +185,8 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Horas Noct.</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   name="horasNocturnas"
                   value={formData.horasNocturnas}
                   onChange={handleChange}
@@ -183,13 +197,13 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Tot. Noct. (EUR)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="valorNocturnidad"
                   value={formData.valorNocturnidad}
                   onChange={handleChange}
-                  placeholder="0.00"
+                  placeholder="Ej: 35,45"
                   className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                  step="0.01"
                 />
               </div>
             </div>
@@ -197,13 +211,13 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Dietas y Complementos (EUR)</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 name="dietas"
                 value={formData.dietas}
                 onChange={handleChange}
-                placeholder="0.00"
+                placeholder="Ej: 120,00"
                 className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                step="0.01"
               />
             </div>
 

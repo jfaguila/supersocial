@@ -200,6 +200,46 @@ const ResultsDisplay = ({ results }) => {
                     </td>
                   </tr>
                 )}
+
+                {/* Dietas */}
+                {details.dietas && (
+                  <tr className="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+                    <td className="py-3 px-4 font-medium text-gray-800 dark:text-gray-200">
+                      Dietas
+                      <span className="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-1">
+                        {details.dietas.mensaje}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-700 dark:text-gray-300">{details.dietas.real?.toFixed(2)} EUR</td>
+                    <td className="py-3 px-4 text-right text-gray-700 dark:text-gray-300">{details.dietas.teorico?.toFixed(2)} EUR</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        {details.dietas.estado}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+
+                {/* Totales */}
+                {details.calculos_finales && (
+                  <tr className="border-t-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
+                    <td className="py-4 px-4 text-gray-900 dark:text-gray-100">
+                      TOTAL DEVENGADO
+                      {details.calculos_finales.diferencia_total !== 0 && (
+                        <span className={`block text-xs font-normal mt-1 ${details.calculos_finales.diferencia_total >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          Diferencia: {details.calculos_finales.diferencia_total >= 0 ? '+' : ''}{details.calculos_finales.diferencia_total.toFixed(2)} EUR
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-right text-gray-900 dark:text-gray-100">{details.calculos_finales.total_devengado?.toFixed(2)} EUR</td>
+                    <td className="py-4 px-4 text-right text-gray-900 dark:text-gray-100">{details.calculos_finales.total_teorico?.toFixed(2)} EUR</td>
+                    <td className="py-4 px-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${details.calculos_finales.diferencia_total >= -5 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                        {details.calculos_finales.diferencia_total >= -5 ? 'CORRECTO' : 'REVISAR'}
+                      </span>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
