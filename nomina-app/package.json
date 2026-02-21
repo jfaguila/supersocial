@@ -20,6 +20,7 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/ 2>/dev/null || echo 'pdf worker copy skipped'",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
