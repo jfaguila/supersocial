@@ -8,6 +8,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import DarkModeToggle from '../components/DarkModeToggle';
 import InstructionsModal from '../components/InstructionsModal';
 import { validatePayroll, DEMO_EXAMPLES, DEFAULT_CATEGORIES, CONVENTION_CATEGORY_KEYS } from '../utils/payrollEngine';
+import { extractTextFromPDF, parsePayrollText } from '../utils/pdfExtractor';
 
 const HomePage = () => {
   const { t } = useLanguage();
@@ -39,44 +40,52 @@ const HomePage = () => {
     setAnnouncement(`Archivo ${file.name} seleccionado. Pulsa analizar para continuar.`);
   };
 
-  // Step 1 -> Step 2: Process uploaded file
+  // Step 1 -> Step 2: Process uploaded file and extract data
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
     setLoading(true);
     setError(null);
-    setLoadingMessage(t('analyzing'));
-    setLoadingProgress(0);
-
-    // Simulate file processing with progress
-    const simulateProgress = async () => {
-      setLoadingMessage(t('uploading'));
-      setLoadingProgress(25);
-      await new Promise(r => setTimeout(r, 800));
-
-      setLoadingMessage(t('processingResults'));
-      setLoadingProgress(60);
-      await new Promise(r => setTimeout(r, 600));
-
-      setLoadingProgress(90);
-      await new Promise(r => setTimeout(r, 400));
-    };
+    setLoadingMessage('Leyendo archivo...');
+    setLoadingProgress(10);
 
     try {
-      await simulateProgress();
+      let extracted = {};
 
-      // Pre-fill review form with convention defaults
+      // Extract text from PDF
+      if (selectedFile.type === 'application/pdf') {
+        setLoadingMessage('Extrayendo texto del PDF...');
+        setLoadingProgress(30);
+
+        const pdfText = await extractTextFromPDF(selectedFile);
+        setLoadingProgress(60);
+
+        setLoadingMessage('Analizando conceptos salariales...');
+        extracted = parsePayrollText(pdfText);
+        setLoadingProgress(85);
+      } else {
+        // For images, we can't extract text client-side — go to manual
+        setLoadingProgress(85);
+      }
+
+      // Merge: extracted data takes priority, then user's convenio selection as fallback
+      const convenio = extracted.convenio || uploadData.convenio;
+      const validCats = CONVENTION_CATEGORY_KEYS[convenio] || [];
+      const categoria = validCats.includes(uploadData.categoria)
+        ? uploadData.categoria
+        : (DEFAULT_CATEGORIES[convenio] || validCats[0] || 'empleado');
+
       const prefilledData = {
-        convenio: uploadData.convenio,
-        categoria: uploadData.categoria,
-        salarioBase: '',
-        plusConvenio: '',
-        valorAntiguedad: '',
-        horasNocturnas: '',
-        valorNocturnidad: '',
-        dietas: '',
-        pagas: '14',
-        prorrateo: false
+        convenio,
+        categoria,
+        salarioBase: extracted.salarioBase || '',
+        plusConvenio: extracted.plusConvenio || '',
+        valorAntiguedad: extracted.valorAntiguedad || '',
+        horasNocturnas: extracted.horasNocturnas || '',
+        valorNocturnidad: extracted.valorNocturnidad || '',
+        dietas: extracted.dietas || '',
+        pagas: extracted.pagas || '14',
+        prorrateo: extracted.prorrateo || false
       };
 
       setReviewData(prefilledData);
@@ -400,9 +409,9 @@ const HomePage = () => {
                   </span>
                   Paso 2 de 3
                 </div>
-                <h2 className="text-3xl font-bold">Introduce los datos de tu nomina</h2>
+                <h2 className="text-3xl font-bold">Revisa los datos de tu nomina</h2>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Rellena los conceptos salariales tal como aparecen en tu nomina. Compararemos cada uno con lo que marca tu convenio.
+                  Hemos extraido los datos del PDF. Revisa que sean correctos y completa lo que falte antes del analisis.
                 </p>
               </div>
 
