@@ -40,33 +40,58 @@ const HomePage = () => {
     setAnnouncement(`Archivo ${file.name} seleccionado. Pulsa analizar para continuar.`);
   };
 
+  // State for extraction info shown in Step 2
+  const [extractionInfo, setExtractionInfo] = useState(null);
+
   // Step 1 -> Step 2: Process uploaded file and extract data
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
     setLoading(true);
     setError(null);
+    setExtractionInfo(null);
     setLoadingMessage('Leyendo archivo...');
     setLoadingProgress(10);
 
     try {
       let extracted = {};
+      let rawPreview = '';
 
       // Extract text from PDF
       if (selectedFile.type === 'application/pdf') {
         setLoadingMessage('Extrayendo texto del PDF...');
         setLoadingProgress(30);
 
-        const pdfText = await extractTextFromPDF(selectedFile);
+        let pdfText = '';
+        try {
+          pdfText = await extractTextFromPDF(selectedFile);
+        } catch (pdfErr) {
+          console.error('PDF extraction error:', pdfErr);
+          // If pdf.js fails, continue with empty extraction
+          pdfText = '';
+        }
         setLoadingProgress(60);
 
-        setLoadingMessage('Analizando conceptos salariales...');
-        extracted = parsePayrollText(pdfText);
+        if (pdfText && pdfText.trim().length > 0) {
+          setLoadingMessage('Analizando conceptos salariales...');
+          extracted = parsePayrollText(pdfText);
+          rawPreview = extracted._rawTextPreview || pdfText.substring(0, 300);
+          delete extracted._rawTextPreview;
+        }
         setLoadingProgress(85);
       } else {
-        // For images, we can't extract text client-side — go to manual
         setLoadingProgress(85);
       }
+
+      // Count how many fields were found
+      const fieldsFound = ['salarioBase', 'plusConvenio', 'valorAntiguedad',
+        'valorNocturnidad', 'dietas'].filter(k => extracted[k]).length;
+
+      setExtractionInfo({
+        fieldsFound,
+        rawPreview: rawPreview || '',
+        isImage: selectedFile.type !== 'application/pdf',
+      });
 
       // Merge: extracted data takes priority, then user's convenio selection as fallback
       const convenio = extracted.convenio || uploadData.convenio;
@@ -411,9 +436,26 @@ const HomePage = () => {
                 </div>
                 <h2 className="text-3xl font-bold">Revisa los datos de tu nomina</h2>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Hemos extraido los datos del PDF. Revisa que sean correctos y completa lo que falte antes del analisis.
+                  {extractionInfo && extractionInfo.fieldsFound > 0
+                    ? `Hemos detectado ${extractionInfo.fieldsFound} concepto(s) del PDF. Revisa que sean correctos.`
+                    : 'Introduce los datos tal como aparecen en tu nomina para compararlos con el convenio.'
+                  }
                 </p>
               </div>
+
+              {/* Extraction feedback */}
+              {extractionInfo && extractionInfo.fieldsFound === 0 && !extractionInfo.isImage && (
+                <div className="p-4 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 text-sm">
+                  <p className="font-bold mb-1">No hemos podido extraer datos automaticamente del PDF.</p>
+                  <p>Esto puede pasar si el PDF es una imagen escaneada o tiene un formato no estandar. Introduce los datos a mano.</p>
+                  {extractionInfo.rawPreview && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-yellow-600 dark:text-yellow-500">Ver texto detectado (debug)</summary>
+                      <pre className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">{extractionInfo.rawPreview}</pre>
+                    </details>
+                  )}
+                </div>
+              )}
 
               <ManualInput
                 onSubmit={handleConfirmAnalysis}
