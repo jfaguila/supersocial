@@ -398,11 +398,11 @@ const HomePage = () => {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                   </span>
-                  Echamosle un ojo!
+                  Paso 2 de 3
                 </div>
-                <h2 className="text-3xl font-bold">Verifica los datos detectados</h2>
+                <h2 className="text-3xl font-bold">Introduce los datos de tu nomina</h2>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Nuestra IA ha extraido esta informacion. Por favor, asegurate de que todo es correcto antes del analisis legal final.
+                  Rellena los conceptos salariales tal como aparecen en tu nomina. Compararemos cada uno con lo que marca tu convenio.
                 </p>
               </div>
 

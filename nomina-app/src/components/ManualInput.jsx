@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { DEFAULT_CATEGORIES, CONVENTION_CATEGORY_KEYS } from '../utils/payrollEngine';
 
 const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false }) => {
+  const [validationError, setValidationError] = useState('');
   const [formData, setFormData] = useState({
     horasExtras: '',
     dietas: '',
@@ -49,6 +50,12 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const salVal = String(formData.salarioBase).trim();
+    if (!salVal) {
+      setValidationError('Debes introducir al menos el Salario Base para poder verificar la nomina.');
+      return;
+    }
+    setValidationError('');
     onSubmit(formData);
   };
 
@@ -59,6 +66,14 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
       className="space-y-6"
     >
       <form onSubmit={handleSubmit} className="space-y-10">
+        {validationError && (
+          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 font-medium flex items-center gap-3">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            {validationError}
+          </div>
+        )}
         {/* 1. Contexto Laboral */}
         <section className="space-y-6 bg-gray-50/50 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800/50">
           <h4 className="text-sm font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
@@ -134,15 +149,15 @@ const ManualInput = ({ onSubmit, onBack, initialData = null, disabled = false })
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Salario Base Mensual (EUR)</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 ml-1">Salario Base Mensual (EUR) <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   inputMode="decimal"
                   name="salarioBase"
                   value={formData.salarioBase}
-                  onChange={handleChange}
+                  onChange={(e) => { setValidationError(''); handleChange(e); }}
                   placeholder="Ej: 1.350,50"
-                  className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
+                  className={`w-full bg-white dark:bg-gray-800 border rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm ${validationError && !String(formData.salarioBase).trim() ? 'border-red-400 dark:border-red-600 ring-2 ring-red-200 dark:ring-red-800' : 'border-gray-200 dark:border-gray-700'}`}
                 />
               </div>
 
