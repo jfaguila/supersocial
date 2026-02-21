@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     content_languages: str = Field("en", alias="CONTENT_LANGUAGES")
     max_posts_per_platform_per_day: int = Field(3, alias="MAX_POSTS_PER_PLATFORM_PER_DAY")
 
+    # --- YouTube Factory ---
+    youtube_enabled: bool = Field(False, alias="YOUTUBE_ENABLED")
+    youtube_image_provider: str = Field("dalle3", alias="YOUTUBE_IMAGE_PROVIDER")
+    youtube_max_concurrent_productions: int = Field(2, alias="YOUTUBE_MAX_CONCURRENT_PRODUCTIONS")
+    youtube_default_privacy: str = Field("unlisted", alias="YOUTUBE_DEFAULT_PRIVACY")
+    replicate_api_token: str = Field("", alias="REPLICATE_API_TOKEN")
+
     # --- Alerts ---
     alert_email: str = Field("", alias="ALERT_EMAIL")
     smtp_host: str = Field("", alias="SMTP_HOST")
@@ -92,6 +99,10 @@ class Settings(BaseSettings):
     @property
     def is_semi_autonomous(self) -> bool:
         return self.george_cycle_mode == "semi"
+
+    @property
+    def is_youtube_enabled(self) -> bool:
+        return self.youtube_enabled
 
 
 @lru_cache(maxsize=1)
