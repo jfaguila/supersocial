@@ -27,7 +27,7 @@ SCOPES = [
 
 AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
-REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"  # Flujo manual sin servidor local
+REDIRECT_URI = "http://localhost"  # Google deprecated OOB; redirect to localhost
 
 
 def get_refresh_token(client_id: str, client_secret: str) -> str | None:
@@ -55,8 +55,9 @@ def get_refresh_token(client_id: str, client_secret: str) -> str | None:
     print()
     print("─" * 60)
     print("  PASO 2: Autoriza con tu cuenta de YouTube")
-    print("  PASO 3: Google te mostrará un código de autorización")
-    print("  PASO 4: Copia ese código y pégalo aquí abajo")
+    print("  PASO 3: Google te redirigirá a localhost con un ?code= en la URL")
+    print("          (ej: http://localhost/?code=4/0Afr...&scope=...)")
+    print("  PASO 4: Copia SOLO el valor del parámetro 'code' y pégalo aquí")
     print("─" * 60)
     print()
 

@@ -28,5 +28,8 @@ build/
 .coverage
 htmlcov/
 
+# YouTube Factory data (credentials, productions)
+youtube/data/
+
 # Alembic (keep versions in source control)
 alembic/versions/*.pyc
