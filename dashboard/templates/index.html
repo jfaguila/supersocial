@@ -362,6 +362,7 @@
   <button class="nav-tab" onclick="showTab('posts')">📝 Contenido</button>
   <button class="nav-tab" onclick="showTab('metrics')">📊 Métricas</button>
   <button class="nav-tab" onclick="showTab('videos')">🎬 Vídeos</button>
+  <button class="nav-tab" onclick="showTab('youtube')">📺 YouTube Factory</button>
 </nav>
 
 <main class="main">
@@ -579,6 +580,63 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 6: YOUTUBE FACTORY                      -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="tab-youtube" class="tab-panel">
+
+    <!-- Stats overview -->
+    <div class="grid2" id="yt-stats-grid">
+      <div class="card">
+        <div class="card-title"><span class="icon">📺</span> Resumen YouTube Factory</div>
+        <div id="yt-stats-body" style="font-size:13px;color:var(--muted);">Cargando...</div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">📊</span> Videos por estado</div>
+        <div id="yt-status-chart" style="font-size:13px;color:var(--muted);">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- Channels -->
+    <div class="card">
+      <div class="card-title"><span class="icon">📡</span> Canales configurados</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+        Canales de YouTube gestionados por la factory. Cada canal tiene su nicho, tono y calendario de publicación.
+      </p>
+      <div id="yt-channels-container">
+        <div class="empty"><span class="icon">📡</span>Cargando canales...</div>
+      </div>
+    </div>
+
+    <!-- Characters -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🧑‍🎨</span> Personajes IA</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+        Identidades visuales y de voz que mantienen consistencia en cada vídeo generado.
+      </p>
+      <div id="yt-characters-container">
+        <div class="empty"><span class="icon">🧑‍🎨</span>Cargando personajes...</div>
+      </div>
+    </div>
+
+    <!-- Videos -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🎬</span> Vídeos producidos</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="loadYTVideos(null, null)">Todos</button>
+        <button class="btn btn-ghost" onclick="loadYTVideos(null, 'published')">Publicados</button>
+        <button class="btn btn-ghost" onclick="loadYTVideos(null, 'rendered')">Renderizados</button>
+        <button class="btn btn-ghost" onclick="loadYTVideos(null, 'draft')">Borradores</button>
+        <button class="btn btn-ghost" onclick="loadYTVideos(null, 'failed')">Fallidos</button>
+        <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadYouTubeTab()">↻ Actualizar</button>
+      </div>
+      <div id="yt-videos-container">
+        <div class="empty"><span class="icon">🎬</span>Cargando vídeos...</div>
+      </div>
+    </div>
+
+  </div>
+
 </main>
 
 <!-- TOAST -->
@@ -600,6 +658,7 @@
     if (name === 'posts')     loadPosts();
     if (name === 'metrics')   loadAllMetrics();
     if (name === 'videos')    loadVideos();
+    if (name === 'youtube')   loadYouTubeTab();
   }
 
   // ── CHAT ASISTENTE ──────────────────────────────────────────────
@@ -1081,6 +1140,220 @@
         container.appendChild(div);
       }
     } catch(e) {}
+  }
+
+  // ── YOUTUBE FACTORY ──────────────────────────────────────────────
+
+  const YT_STATUS_LABELS = {
+    draft: '📝 Borrador',
+    rendering: '⏳ Renderizando',
+    rendered: '✅ Listo',
+    uploading: '📤 Subiendo',
+    published: '🟢 Publicado',
+    failed: '❌ Fallido',
+  };
+
+  const YT_STATUS_BADGE = {
+    draft: 'info',
+    rendering: 'warn',
+    rendered: 'ok',
+    uploading: 'warn',
+    published: 'ok',
+    failed: 'error',
+  };
+
+  async function loadYouTubeTab() {
+    loadYTStats();
+    loadYTChannels();
+    loadYTCharacters();
+    loadYTVideos(null, null);
+  }
+
+  async function loadYTStats() {
+    const statsBody = document.getElementById('yt-stats-body');
+    const statusChart = document.getElementById('yt-status-chart');
+    try {
+      const r = await fetch(API + '/george/youtube/stats');
+      if (!r.ok) { statsBody.textContent = 'Sin datos'; return; }
+      const d = await r.json();
+
+      statsBody.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;">
+          <div style="text-align:center;">
+            <div class="metric-val">${d.active_channels} / ${d.total_channels}</div>
+            <div style="font-size:12px;color:var(--muted);">Canales activos</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${d.total_characters}</div>
+            <div style="font-size:12px;color:var(--muted);">Personajes IA</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${d.total_videos}</div>
+            <div style="font-size:12px;color:var(--muted);">Vídeos totales</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px;">
+          <div style="text-align:center;">
+            <div class="metric-val">${(d.total_views || 0).toLocaleString()}</div>
+            <div style="font-size:12px;color:var(--muted);">Views totales</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${(d.total_likes || 0).toLocaleString()}</div>
+            <div style="font-size:12px;color:var(--muted);">Likes totales</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="metric-val">${((d.avg_ctr || 0) * 100).toFixed(2)}%</div>
+            <div style="font-size:12px;color:var(--muted);">CTR medio</div>
+          </div>
+        </div>`;
+
+      // Status chart
+      const statuses = d.videos_by_status || {};
+      if (Object.keys(statuses).length === 0) {
+        statusChart.innerHTML = '<span style="color:var(--muted);font-size:13px;">Sin vídeos aún</span>';
+      } else {
+        statusChart.innerHTML = Object.entries(statuses).map(([st, count]) => {
+          const label = YT_STATUS_LABELS[st] || st;
+          const cls = YT_STATUS_BADGE[st] || 'info';
+          const pct = d.total_videos > 0 ? Math.round((count / d.total_videos) * 100) : 0;
+          return `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <span class="badge ${cls}" style="min-width:120px;">${label}</span>
+              <div style="flex:1;background:var(--surface2);border-radius:4px;height:20px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:4px;transition:width 0.3s;"></div>
+              </div>
+              <span style="font-size:13px;font-weight:700;min-width:40px;text-align:right;">${count}</span>
+            </div>`;
+        }).join('');
+      }
+    } catch(e) {
+      statsBody.textContent = 'Error de conexión';
+    }
+  }
+
+  async function loadYTChannels() {
+    const container = document.getElementById('yt-channels-container');
+    try {
+      const r = await fetch(API + '/george/youtube/channels');
+      if (!r.ok) { container.innerHTML = '<div class="empty"><span class="icon">📡</span>Error cargando canales</div>'; return; }
+      const d = await r.json();
+      if (!d.channels || d.channels.length === 0) {
+        container.innerHTML = '<div class="empty"><span class="icon">📡</span>No hay canales configurados.<br>Usa el CLI: <code>python -m youtube.cli setup</code></div>';
+        return;
+      }
+      container.innerHTML = `<table>
+        <thead><tr>
+          <th>Canal</th>
+          <th>Nicho</th>
+          <th>Personaje</th>
+          <th>Vids/sem</th>
+          <th>Publicados</th>
+          <th>Views</th>
+          <th>Subs</th>
+          <th>Estado</th>
+        </tr></thead>
+        <tbody>${d.channels.map(ch => `<tr>
+          <td style="font-weight:700;">${escapeHtml(ch.name)}</td>
+          <td><span class="badge info">${escapeHtml(ch.niche)}</span></td>
+          <td>${ch.character_name ? escapeHtml(ch.character_name) : '<span style="color:var(--muted);">—</span>'}</td>
+          <td style="text-align:center;">${ch.videos_per_week}</td>
+          <td style="text-align:center;font-weight:700;">${ch.total_videos_published}</td>
+          <td style="text-align:center;">${(ch.total_views || 0).toLocaleString()}</td>
+          <td style="text-align:center;">${(ch.subscriber_count || 0).toLocaleString()}</td>
+          <td>${ch.is_active
+            ? '<span class="badge ok">Activo</span>'
+            : '<span class="badge warn">Inactivo</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    } catch(e) {
+      container.innerHTML = '<div class="empty"><span class="icon">⚠️</span>Error de conexión</div>';
+    }
+  }
+
+  async function loadYTCharacters() {
+    const container = document.getElementById('yt-characters-container');
+    try {
+      const r = await fetch(API + '/george/youtube/characters');
+      if (!r.ok) { container.innerHTML = '<div class="empty"><span class="icon">🧑‍🎨</span>Error cargando personajes</div>'; return; }
+      const d = await r.json();
+      if (!d.characters || d.characters.length === 0) {
+        container.innerHTML = '<div class="empty"><span class="icon">🧑‍🎨</span>No hay personajes definidos aún.</div>';
+        return;
+      }
+      container.innerHTML = d.characters.map(c => `
+        <div style="display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--border);">
+          <div style="width:54px;height:54px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🧑‍🎨</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:15px;">${escapeHtml(c.name)}
+              ${c.is_active ? '<span class="badge ok" style="font-size:11px;margin-left:8px;">Activo</span>' : '<span class="badge warn" style="font-size:11px;margin-left:8px;">Inactivo</span>'}
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;">
+              ${escapeHtml(c.physical_description.slice(0, 120))}${c.physical_description.length > 120 ? '...' : ''}
+            </div>
+            <div style="display:flex;gap:16px;margin-top:8px;font-size:12px;">
+              <span>🎨 ${escapeHtml(c.art_style.slice(0, 40))}</span>
+              <span>🎵 ${c.voice_id ? 'Voz configurada' : 'Sin voz'}</span>
+              <span>📺 ${c.channels_count} canal${c.channels_count !== 1 ? 'es' : ''}</span>
+              <span>🎬 ${c.videos_generated} vídeos</span>
+            </div>
+          </div>
+        </div>`).join('');
+    } catch(e) {
+      container.innerHTML = '<div class="empty"><span class="icon">⚠️</span>Error de conexión</div>';
+    }
+  }
+
+  async function loadYTVideos(channelId, statusFilter) {
+    const container = document.getElementById('yt-videos-container');
+    container.innerHTML = '<div class="empty"><span class="icon">⌛</span>Cargando...</div>';
+    try {
+      let url = API + '/george/youtube/videos?limit=50';
+      if (channelId) url += '&channel_id=' + channelId;
+      if (statusFilter) url += '&status=' + statusFilter;
+
+      const r = await fetch(url);
+      if (!r.ok) { container.innerHTML = '<div class="empty"><span class="icon">⚠️</span>Error cargando vídeos</div>'; return; }
+      const d = await r.json();
+
+      if (!d.videos || d.videos.length === 0) {
+        container.innerHTML = '<div class="empty"><span class="icon">🎬</span>No hay vídeos' + (statusFilter ? ' con estado "' + statusFilter + '"' : '') + '.<br>Inicia un ciclo semanal para producir vídeos.</div>';
+        return;
+      }
+
+      container.innerHTML = `<table>
+        <thead><tr>
+          <th>Título / Tema</th>
+          <th>Canal</th>
+          <th>Estado</th>
+          <th>Duración</th>
+          <th>Views</th>
+          <th>Likes</th>
+          <th>CTR</th>
+          <th>Fecha</th>
+        </tr></thead>
+        <tbody>${d.videos.map(v => {
+          const dur = v.duration_seconds ? Math.floor(v.duration_seconds / 60) + ':' + String(Math.floor(v.duration_seconds % 60)).padStart(2, '0') : '—';
+          const date = v.created_at ? new Date(v.created_at * 1000).toLocaleDateString('es-ES', {day:'2-digit', month:'short'}) : '—';
+          const title = v.title || v.topic;
+          const link = v.youtube_url ? '<a href="' + escapeHtml(v.youtube_url) + '" target="_blank" style="color:var(--accent);text-decoration:none;">' + escapeHtml(title.slice(0, 50)) + '</a>' : escapeHtml(title.slice(0, 50));
+          return `<tr>
+            <td>
+              <div style="font-weight:600;font-size:13px;">${link}${title.length > 50 ? '...' : ''}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">${v.scenes_count} escenas</div>
+            </td>
+            <td style="font-size:12px;">${v.channel_name ? escapeHtml(v.channel_name) : '—'}</td>
+            <td><span class="badge ${YT_STATUS_BADGE[v.status] || 'info'}">${YT_STATUS_LABELS[v.status] || v.status}</span></td>
+            <td style="text-align:center;font-size:13px;">${dur}</td>
+            <td style="text-align:center;font-weight:700;">${(v.views || 0).toLocaleString()}</td>
+            <td style="text-align:center;">${(v.likes || 0).toLocaleString()}</td>
+            <td style="text-align:center;">${((v.ctr || 0) * 100).toFixed(1)}%</td>
+            <td style="font-size:12px;white-space:nowrap;">${date}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    } catch(e) {
+      container.innerHTML = '<div class="empty"><span class="icon">⚠️</span>Error de conexión</div>';
+    }
   }
 
   // ── UTILS ──

@@ -27,6 +27,10 @@ from tools_server.schemas import (
     CycleSummaryResponse,
     ChatRequest,
     ChatResponse,
+    YouTubeChannelsResponse,
+    YouTubeCharactersResponse,
+    YouTubeVideosResponse,
+    YouTubeStatsResponse,
 )
 from tools_server.api_checker import ApiChecker
 from tools_server.cycle_runner import BackgroundCycleRunner
@@ -397,6 +401,201 @@ async def chat_endpoint(request: ChatRequest):
         return ChatResponse(reply=reply)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error del asistente: {exc}")
+
+
+# ─────────────────────────────────────────────────────────────
+# YOUTUBE FACTORY — Canales, personajes y vídeos
+# ─────────────────────────────────────────────────────────────
+
+@app.get(
+    "/george/youtube/stats",
+    response_model=YouTubeStatsResponse,
+    summary="Estadísticas globales de YouTube Factory",
+    tags=["YouTube Factory"],
+)
+async def youtube_stats():
+    """Resumen general: canales, personajes, vídeos producidos, views, CTR."""
+    from memory.session import _SessionFactory
+    from youtube.models import YouTubeChannel, YouTubeCharacter, YouTubeVideo
+    from sqlalchemy import select, func
+
+    async with _SessionFactory() as session:
+        ch_total = (await session.execute(select(func.count(YouTubeChannel.id)))).scalar() or 0
+        ch_active = (await session.execute(
+            select(func.count(YouTubeChannel.id)).where(YouTubeChannel.is_active.is_(True))
+        )).scalar() or 0
+        char_total = (await session.execute(select(func.count(YouTubeCharacter.id)))).scalar() or 0
+        vid_total = (await session.execute(select(func.count(YouTubeVideo.id)))).scalar() or 0
+        vid_published = (await session.execute(
+            select(func.count(YouTubeVideo.id)).where(YouTubeVideo.status == "published")
+        )).scalar() or 0
+        total_views = (await session.execute(select(func.coalesce(func.sum(YouTubeVideo.views), 0)))).scalar() or 0
+        total_likes = (await session.execute(select(func.coalesce(func.sum(YouTubeVideo.likes), 0)))).scalar() or 0
+        avg_ctr = (await session.execute(select(func.coalesce(func.avg(YouTubeVideo.ctr), 0.0)))).scalar() or 0.0
+
+        # Videos by status
+        status_rows = (await session.execute(
+            select(YouTubeVideo.status, func.count(YouTubeVideo.id)).group_by(YouTubeVideo.status)
+        )).all()
+        videos_by_status = {row[0]: row[1] for row in status_rows}
+
+    return YouTubeStatsResponse(
+        total_channels=ch_total,
+        active_channels=ch_active,
+        total_characters=char_total,
+        total_videos=vid_total,
+        published_videos=vid_published,
+        total_views=int(total_views),
+        total_likes=int(total_likes),
+        avg_ctr=round(float(avg_ctr), 4),
+        videos_by_status=videos_by_status,
+    )
+
+
+@app.get(
+    "/george/youtube/channels",
+    response_model=YouTubeChannelsResponse,
+    summary="Lista de canales YouTube configurados",
+    tags=["YouTube Factory"],
+)
+async def youtube_channels():
+    """Devuelve todos los canales YouTube configurados con sus estadísticas."""
+    from memory.session import _SessionFactory
+    from youtube.models import YouTubeChannel, YouTubeCharacter
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    async with _SessionFactory() as session:
+        result = await session.execute(
+            select(YouTubeChannel).options(selectinload(YouTubeChannel.character))
+        )
+        channels = result.scalars().all()
+
+    return YouTubeChannelsResponse(
+        channels=[
+            {
+                "channel_id": ch.id,
+                "name": ch.name,
+                "niche": ch.niche,
+                "language": ch.language,
+                "tone": ch.tone,
+                "videos_per_week": ch.videos_per_week,
+                "target_duration_minutes": ch.target_duration_minutes,
+                "privacy_status": ch.privacy_status,
+                "is_active": ch.is_active,
+                "total_videos_published": ch.total_videos_published,
+                "total_views": ch.total_views,
+                "subscriber_count": ch.subscriber_count,
+                "character_name": ch.character.name if ch.character else None,
+                "created_at": ch.created_at,
+            }
+            for ch in channels
+        ],
+        total=len(channels),
+    )
+
+
+@app.get(
+    "/george/youtube/characters",
+    response_model=YouTubeCharactersResponse,
+    summary="Personajes IA configurados para YouTube",
+    tags=["YouTube Factory"],
+)
+async def youtube_characters():
+    """Devuelve todos los personajes IA con su identidad visual y de voz."""
+    from memory.session import _SessionFactory
+    from youtube.models import YouTubeCharacter, YouTubeChannel
+    from sqlalchemy import select, func
+
+    async with _SessionFactory() as session:
+        result = await session.execute(select(YouTubeCharacter))
+        characters = result.scalars().all()
+
+        # Count channels per character
+        ch_counts = {}
+        count_rows = (await session.execute(
+            select(YouTubeChannel.character_id, func.count(YouTubeChannel.id))
+            .group_by(YouTubeChannel.character_id)
+        )).all()
+        for row in count_rows:
+            if row[0]:
+                ch_counts[row[0]] = row[1]
+
+    return YouTubeCharactersResponse(
+        characters=[
+            {
+                "character_id": c.id,
+                "name": c.name,
+                "physical_description": c.physical_description,
+                "art_style": c.art_style,
+                "color_palette": c.color_palette,
+                "voice_id": c.elevenlabs_voice_id or "",
+                "is_active": c.is_active,
+                "videos_generated": c.videos_generated,
+                "channels_count": ch_counts.get(c.id, 0),
+            }
+            for c in characters
+        ],
+        total=len(characters),
+    )
+
+
+@app.get(
+    "/george/youtube/videos",
+    response_model=YouTubeVideosResponse,
+    summary="Vídeos producidos por YouTube Factory",
+    tags=["YouTube Factory"],
+)
+async def youtube_videos(
+    channel_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+):
+    """
+    Lista los vídeos producidos. Filtra por canal o estado.
+    Estados: draft, rendering, rendered, uploading, published, failed
+    """
+    from memory.session import _SessionFactory
+    from youtube.models import YouTubeVideo, YouTubeChannel
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    async with _SessionFactory() as session:
+        q = select(YouTubeVideo).options(
+            selectinload(YouTubeVideo.channel)
+        ).order_by(YouTubeVideo.created_at.desc()).limit(limit)
+
+        if channel_id:
+            q = q.where(YouTubeVideo.channel_id == channel_id)
+        if status:
+            q = q.where(YouTubeVideo.status == status)
+
+        result = await session.execute(q)
+        videos = result.scalars().all()
+
+    return YouTubeVideosResponse(
+        videos=[
+            {
+                "video_id": v.id,
+                "channel_id": v.channel_id,
+                "channel_name": v.channel.name if v.channel else None,
+                "topic": v.topic,
+                "title": v.title,
+                "youtube_url": v.youtube_url,
+                "status": v.status,
+                "duration_seconds": v.duration_seconds,
+                "scenes_count": v.scenes_count,
+                "views": v.views or 0,
+                "likes": v.likes or 0,
+                "comments_count": v.comments_count or 0,
+                "ctr": v.ctr or 0.0,
+                "created_at": v.created_at,
+                "published_at": v.published_at,
+            }
+            for v in videos
+        ],
+        total=len(videos),
+    )
 
 
 # ─────────────────────────────────────────────────────────────

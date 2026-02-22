@@ -99,3 +99,79 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     model: str = "claude-opus-4-6"
+
+
+# ─── YouTube Factory ─────────────────────────────────────────────────────
+
+class YouTubeChannelSummary(BaseModel):
+    channel_id: str
+    name: str
+    niche: str
+    language: str
+    tone: str
+    videos_per_week: int
+    target_duration_minutes: int
+    privacy_status: str
+    is_active: bool
+    total_videos_published: int
+    total_views: int
+    subscriber_count: int
+    character_name: Optional[str] = None
+    created_at: Optional[int] = None
+
+
+class YouTubeChannelsResponse(BaseModel):
+    channels: list[YouTubeChannelSummary]
+    total: int
+
+
+class YouTubeCharacterSummary(BaseModel):
+    character_id: str
+    name: str
+    physical_description: str
+    art_style: str
+    color_palette: str
+    voice_id: str
+    is_active: bool
+    videos_generated: int
+    channels_count: int = 0
+
+
+class YouTubeCharactersResponse(BaseModel):
+    characters: list[YouTubeCharacterSummary]
+    total: int
+
+
+class YouTubeVideoSummary(BaseModel):
+    video_id: str
+    channel_id: str
+    channel_name: Optional[str] = None
+    topic: str
+    title: Optional[str] = None
+    youtube_url: Optional[str] = None
+    status: str
+    duration_seconds: Optional[float] = None
+    scenes_count: int = 0
+    views: int = 0
+    likes: int = 0
+    comments_count: int = 0
+    ctr: float = 0.0
+    created_at: Optional[int] = None
+    published_at: Optional[int] = None
+
+
+class YouTubeVideosResponse(BaseModel):
+    videos: list[YouTubeVideoSummary]
+    total: int
+
+
+class YouTubeStatsResponse(BaseModel):
+    total_channels: int
+    active_channels: int
+    total_characters: int
+    total_videos: int
+    published_videos: int
+    total_views: int
+    total_likes: int
+    avg_ctr: float
+    videos_by_status: dict[str, int]
